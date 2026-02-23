@@ -1,0 +1,35 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class NTXentLoss(nn.Module):
+    def __init__(self, temperature=0.5, device='cpu'):
+        super(NTXentLoss, self).__init__()
+        self.temperature = temperature
+        self.device = device
+
+    def forward(self, z_i, z_j):
+        """
+        NT-Xent (Normalized Temperature-scaled Cross Entropy) Loss.
+        z_i, z_j: (B, D) projections from two augmented views.
+        """
+        batch_size = z_i.shape[0]
+        N = 2 * batch_size
+        z = torch.cat((z_i, z_j), dim=0)  # (2B, D)
+        
+        # Normalize vectors for cosine similarity
+        z = F.normalize(z, dim=1)
+        sim_matrix = torch.matmul(z, z.T) / self.temperature
+        
+        # Mask out self-similarity
+        mask = torch.eye(N, dtype=torch.bool).to(self.device)
+        sim_matrix.masked_fill_(mask, -9e15)
+        
+        # Positive pairs: (i, i+batch_size) and (i+batch_size, i)
+        target = torch.cat([
+            torch.arange(batch_size, 2 * batch_size),
+            torch.arange(0, batch_size)
+        ], dim=0).to(self.device)
+        
+        loss = F.cross_entropy(sim_matrix, target)
+        return loss
