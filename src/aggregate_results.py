@@ -124,10 +124,49 @@ def print_paper_table():
         print(df.to_string())
 
 
+def aggregate_zeroshot():
+    """Aggregate zero-shot results across seeds."""
+    models = ['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp']
+    summary = {}
+    
+    for model in models:
+        pattern = f"experiments/zeroshot_{model}_seed*.csv"
+        files = sorted(glob.glob(pattern))
+        
+        if not files:
+            print(f"  No zero-shot seed files found for {model}")
+            continue
+            
+        dfs = [pd.read_csv(f) for f in files]
+        combined = pd.concat(dfs)
+        
+        f1_mean = combined['zero_shot_f1'].mean()
+        f1_std = combined['zero_shot_f1'].std()
+        acc_mean = combined['zero_shot_acc'].mean()
+        auc_mean = combined['zero_shot_auc'].mean()
+        
+        summary[model] = {
+            'f1': f"{f1_mean:.3f} ± {f1_std:.3f}",
+            'f1_mean': round(f1_mean, 4),
+            'f1_std': round(f1_std, 4),
+            'acc_mean': round(acc_mean, 4),
+            'auc_mean': round(auc_mean, 4)
+        }
+        print(f"  {model}: {len(files)} seeds, F1={f1_mean:.4f}±{f1_std:.4f}")
+    
+    if summary:
+        df = pd.DataFrame(summary).T
+        df.to_csv("experiments/results_zeroshot_summary.csv")
+        print(f"\n  Saved: experiments/results_zeroshot_summary.csv")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("  AGGREGATING EXPERIMENT RESULTS")
     print("=" * 50)
+    
+    print("\n--- Zero-Shot Results ---")
+    aggregate_zeroshot()
     
     print("\n--- Few-Shot Results ---")
     aggregate_fewshot()

@@ -15,16 +15,16 @@ class HarmonizedDataset(Dataset):
         """
         print(f"Loading dataset from {csv_file}...")
         self.noise_snr_db = noise_snr_db
-        self.df = pd.read_csv(csv_file)
+        df = pd.read_csv(csv_file)
         
         # Identify signal columns (0..249)
         # We assume columns that are numeric strings are the signal
-        self.signal_cols = [c for c in self.df.columns if str(c).isdigit()]
+        self.signal_cols = [c for c in df.columns if str(c).isdigit()]
         
-        self.X = self.df[self.signal_cols].values.astype(np.float32)
-        self.y = self.df['label'].values.astype(np.int64)
+        self.X = df[self.signal_cols].values.astype(np.float32)
+        self.y = df['label'].values.astype(np.int64)
         
-        print(f"Loaded {len(self.df)} samples. Shape: {self.X.shape}")
+        print(f"Loaded {len(df)} samples. Shape: {self.X.shape}")
         if self.noise_snr_db is not None:
             print(f"Configured for Noise Injection: SNR={self.noise_snr_db}dB")
 
@@ -74,9 +74,9 @@ class SSLAugmentedDataset(Dataset):
         Dataset for Self-Supervised Learning (SimCLR).
         Returns two augmented views of the same signal.
         """
-        self.df = pd.read_csv(csv_file)
-        self.signal_cols = [c for c in self.df.columns if str(c).isdigit()]
-        self.X = self.df[self.signal_cols].values.astype(np.float32)
+        df = pd.read_csv(csv_file)
+        self.signal_cols = [c for c in df.columns if str(c).isdigit()]
+        self.X = df[self.signal_cols].values.astype(np.float32)
         print(f"SSL Dataset Loaded: {len(self.X)} samples.")
 
     def augment(self, signal):

@@ -76,8 +76,8 @@ python -m src.test_robustness --model wavkan
 
 | Model | Baseline | SSL Pre-trained |
 |:---|:---|:---|
-| **Spline-KAN** | 0.688 | **0.803** |
-| **WavKAN** | 0.653 | **0.793** |
-| **ViT** | 0.596 | — |
-| **ResNet** | 0.592 | — |
-| **MLP** | 0.190 | — |
+| **Spline-KAN** | 0.763 | **0.799** |
+| **WavKAN** | 0.706 | **0.791** |
+| **ViT** | 0.688 | — |
+| **ResNet** | 0.729 | — |
+| **MLP** | 0.404 | — |

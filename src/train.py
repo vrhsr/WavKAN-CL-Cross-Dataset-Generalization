@@ -8,6 +8,7 @@ import argparse
 import random
 import csv
 import os
+import math
 from tqdm import tqdm
 
 from src.dataset import HarmonizedDataset
@@ -25,7 +26,7 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-def train_epoch(model, loader, criterion, optimizer, device):
+def train_epoch(model, loader, criterion, optimizer, device, max_grad_norm=1.0):
     model.train()
     running_loss = 0.0
     all_preds = []
@@ -38,6 +39,10 @@ def train_epoch(model, loader, criterion, optimizer, device):
         outputs = model(inputs)
         loss = criterion(outputs, labels)
         loss.backward()
+        
+        # Gradient clipping to prevent ViT training collapse
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        
         optimizer.step()
         
         running_loss += loss.item()
@@ -128,7 +133,18 @@ def main(args):
         raise ValueError("Unknown model")
         
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-5)
+    
+    # Cosine Annealing with Warmup
+    warmup_epochs = min(5, args.epochs // 5)
+    def lr_lambda(epoch):
+        if epoch < warmup_epochs:
+            return (epoch + 1) / warmup_epochs  # Linear warmup
+        else:
+            progress = (epoch - warmup_epochs) / max(1, args.epochs - warmup_epochs)
+            return 0.5 * (1 + math.cos(math.pi * progress))  # Cosine decay
+    
+    scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     
     # 3. Training Loop with Validation & Loss Logging
     print(f"Starting training for {args.model}...")
@@ -138,10 +154,12 @@ def main(args):
     for epoch in range(args.epochs):
         train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
         val_loss, val_acc, val_f1, val_auc = evaluate(model, val_loader, criterion, device)
+        scheduler.step()
         
+        current_lr = optimizer.param_groups[0]['lr']
         print(f"Epoch {epoch+1}/{args.epochs} - "
               f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
-              f"Val Loss: {val_loss:.4f} F1: {val_f1:.4f}")
+              f"Val Loss: {val_loss:.4f} F1: {val_f1:.4f} | LR: {current_lr:.6f}")
         
         history.append({
             'epoch': epoch + 1,
@@ -174,6 +192,19 @@ def main(args):
     print("Running Zero-Shot Evaluation on Target Domain...")
     test_loss, test_acc, test_f1, test_auc = evaluate(model, target_loader, criterion, device)
     print(f"Result - Acc: {test_acc:.4f} - F1: {test_f1:.4f} - AUC: {test_auc:.4f}")
+    
+    # Save zero-shot results per seed for statistical analysis
+    import pandas as pd
+    zs_results = {
+        'model': args.model,
+        'seed': args.seed,
+        'zero_shot_acc': round(test_acc, 4),
+        'zero_shot_f1': round(test_f1, 4),
+        'zero_shot_auc': round(test_auc, 4)
+    }
+    zs_path = f"experiments/zeroshot_{args.model}_seed{args.seed}.csv"
+    pd.DataFrame([zs_results]).to_csv(zs_path, index=False)
+    print(f"Zero-shot results saved to {zs_path}")
 
 
 if __name__ == "__main__":

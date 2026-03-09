@@ -11,7 +11,14 @@ venv/
 
 # Data and Checkpoints
 data/
-experiments/
+*.pth
+*.pt
+
+# Whitelist specific experiment folders
+experiments/*
+!experiments/*.ps1
+!experiments/**/*.png
+!experiments/**/*.jpg
 
 # IDE
 .vscode/

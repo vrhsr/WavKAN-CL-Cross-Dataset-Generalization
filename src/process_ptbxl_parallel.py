@@ -49,17 +49,26 @@ def map_label(scp_codes, agg_df):
         return 1
     return -1
 
+# Global for workers to avoid pickling overhead
+global_agg_dict = None
+
+def get_agg_dict():
+    global global_agg_dict
+    if global_agg_dict is None:
+        agg_df = pd.read_csv(os.path.join(DATA_DIR, 'scp_statements.csv'), index_col=0)
+        agg_df = agg_df[agg_df.diagnostic == 1]
+        global_agg_dict = agg_df['diagnostic_class'].to_dict()
+    return global_agg_dict
+
 def process_record(args):
     """
     Worker function to process a single record.
-    args: (ecg_id, row, agg_df) - but passing enormous dataframes is slow.
-    Better: pass (ecg_id, filename_hr, scp_codes, agg_df_dict)
+    args: (ecg_id, filename_hr, scp_codes)
     """
-    index, filename_hr, scp_codes, agg_dict = args
+    index, filename_hr, scp_codes = args
     
     # 1. Map Label
-    # Re-implement map_label logic using dict for speed/pickle-ability
-    # agg_dict: {code: class}
+    agg_dict = get_agg_dict()
     
     results = []
     for key in scp_codes.keys():
@@ -139,7 +148,7 @@ def main():
     # Prepare arguments
     tasks = []
     for ecg_id, row in Y.iterrows():
-        tasks.append((row.patient_id, row.filename_hr, row.scp_codes, agg_dict))
+        tasks.append((row.patient_id, row.filename_hr, row.scp_codes))
         
     print(f"Distributing {len(tasks)} tasks...")
     
@@ -147,9 +156,12 @@ def main():
     labels = []
     patient_ids = []
     
-    with multiprocessing.Pool(processes=os.cpu_count()) as pool:
+    num_processes = min(8, os.cpu_count() or 1)
+    print(f"Using {num_processes} processes to avoid memory overload...")
+    
+    with multiprocessing.Pool(processes=num_processes) as pool:
         # Chunksize helps with overhead
-        results = list(tqdm(pool.imap(process_record, tasks, chunksize=10), total=len(tasks)))
+        results = list(tqdm(pool.imap(process_record, tasks, chunksize=50), total=len(tasks)))
         
     # Flatten results
     print("Aggregating results...")

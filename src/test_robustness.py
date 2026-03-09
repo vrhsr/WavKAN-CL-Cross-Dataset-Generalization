@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from src.dataset import HarmonizedDataset
 from src.models.wavkan import WavKANClassifier
-from src.models.baselines import ResNet1D, ViT1D
+from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
 from src.models.spline_kan import SplineKANClassifier
 from sklearn.metrics import f1_score
 
@@ -44,6 +44,8 @@ def main(args):
         model = ViT1D(seq_len=250, num_classes=2).to(device)
     elif args.model == 'spline_kan':
         model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
+    elif args.model == 'mlp':
+        model = SimpleMLP(input_dim=250, num_classes=2).to(device)
     else:
         raise ValueError("Unknown model")
         
@@ -81,6 +83,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
-    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan'])
+    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp'])
     args = parser.parse_args()
     main(args)

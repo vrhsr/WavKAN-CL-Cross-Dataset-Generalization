@@ -6,7 +6,7 @@ import math
 class SplineLinear(nn.Module):
     def __init__(self, in_features, out_features, grid_size=5, spline_order=3):
         """
-        Simplified B-Spline Linear Layer for KAN.
+        B-Spline Linear Layer for KAN using RBF approximation.
         """
         super(SplineLinear, self).__init__()
         self.in_features = in_features
@@ -14,12 +14,7 @@ class SplineLinear(nn.Module):
         self.grid_size = grid_size
         self.spline_order = spline_order
         
-        # Grid range [-1, 1]
-        h = (1 - (-1)) / grid_size
-        self.grid = torch.arange(-1 - h * spline_order, 1 + h * spline_order + h, h)
-        
         # Spline coefficients (weights)
-        # Shape: (out, in, num_grids)
         self.spline_weights = nn.Parameter(torch.Tensor(out_features, in_features, grid_size))
         
         # Base weights (residual connection like SiLU)
@@ -31,67 +26,70 @@ class SplineLinear(nn.Module):
         nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
         nn.init.uniform_(self.spline_weights, -0.1, 0.1)
 
-    def b_splines(self, x):
-        """
-        Compute B-spline bases for input x.
-        """
-        # x: (batch, in)
-        x = x.unsqueeze(-1) # (batch, in, 1)
-        grid = self.grid.to(x.device) # (num_grid_points)
-        
-        # This is a simplified B-spline recursion. 
-        # In a full implementation, we vectorize this efficiently.
-        # For this baseline, we use the property that B-splines are piecewise polynomials.
-        # However, writing a full B-spline recursion in pure PyTorch without compilation can be slow.
-        # We will use a "Rational Spline" or simple piecewise approximation if performance is key, 
-        # but for KAN correctness we should try to approximate the basis.
-        
-        # Let's use a simpler "RBF" (Radial Basis Function) approximation which is often used as a proxy 
-        # for splines in "FastKAN", OR strict B-splines. 
-        # Given strict instructions "Spline-KAN baseline", we try to stick to the concept.
-        # A simple grid-based interpolation.
-        
-        # Standard KAN uses: phi(x) = sum(c_i * B_i(x)) + w_b * silu(x)
-        pass 
-
     def forward(self, x):
-        # Implementation of FastKAN-style basis (Gaussian RBFs on grid) as it's more stable for ECG 
-        # and faster to train than recursive B-splines, while mathematically similar.
-        
-        # x: (batch, in)
-        
         # Base activation (SiLU)
         base_output = F.silu(x) 
-        # (batch, in) -> (batch, out) via matrix mult
         base_out = F.linear(base_output, self.base_weight)
         
         # Spline (RBF approximation)
-        # Grid points: we define 'grid_size' centers between -1 and 1
         grid = torch.linspace(-1, 1, self.grid_size).to(x.device)
-        # x_expanded: (batch, in, 1)
-        # grid: (1, 1, grid)
         x_uns = x.unsqueeze(-1)
         
         # RBF: exp(-gamma * (x - c)^2)
-        # We learn weights for each center.
-        # This acts as the "Spline" basis expansion.
-        basis = torch.exp(-torch.pow(x_uns - grid, 2) * 5.0) # (batch, in, grid)
+        basis = torch.exp(-torch.pow(x_uns - grid, 2) * 5.0)  # (batch, in, grid)
         
-        # Weight sum:
-        # spline_weights: (out, in, grid)
-        # output = sum_in sum_grid (basis[b,i,g] * weight[o,i,g])
-        
-        # (batch, in, grid) * (out, in, grid) -> too big memory?
         # Einsum: b i g, o i g -> b o
         spline_out = torch.einsum('big, oig -> bo', basis, self.spline_weights)
         
         return base_out + spline_out
 
+
+class Conv1DStem(nn.Module):
+    """Lightweight 1D convolutional feature extractor that preserves temporal structure."""
+    def __init__(self, out_dim=64):
+        super(Conv1DStem, self).__init__()
+        self.stem = nn.Sequential(
+            # Block 1: capture local morphology (QRS ~8-12 samples at 100Hz)
+            nn.Conv1d(1, 32, kernel_size=7, stride=1, padding=3),
+            nn.BatchNorm1d(32),
+            nn.GELU(),
+            nn.MaxPool1d(2),  # 250 -> 125
+            
+            # Block 2: capture broader waveform features
+            nn.Conv1d(32, 64, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm1d(64),
+            nn.GELU(),
+            nn.MaxPool1d(2),  # 125 -> 62
+            
+            # Block 3: abstract temporal features
+            nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(128),
+            nn.GELU(),
+            nn.AdaptiveAvgPool1d(out_dim // 4),  # -> out_dim//4 time steps
+        )
+        self.out_features = 128 * (out_dim // 4)
+    
+    def forward(self, x):
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        features = self.stem(x)
+        return features.view(features.size(0), -1)
+
+
 class SplineKANClassifier(nn.Module):
-    def __init__(self, input_dim=1000, num_classes=2, hidden_dim=64):
+    def __init__(self, input_dim=250, num_classes=2, hidden_dim=64, use_conv_stem=True):
         super(SplineKANClassifier, self).__init__()
         
-        self.layer1 = SplineLinear(input_dim, hidden_dim)
+        self.use_conv_stem = use_conv_stem
+        
+        if use_conv_stem:
+            self.conv_stem = Conv1DStem(out_dim=hidden_dim)
+            kan_input_dim = self.conv_stem.out_features
+        else:
+            self.conv_stem = None
+            kan_input_dim = input_dim
+        
+        self.layer1 = SplineLinear(kan_input_dim, hidden_dim)
         self.norm1 = nn.LayerNorm(hidden_dim)
         
         self.layer2 = SplineLinear(hidden_dim, hidden_dim * 2)
@@ -110,9 +108,11 @@ class SplineKANClassifier(nn.Module):
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
     def forward(self, x, contrastive=False):
-        # x: (batch, seq_len) -> Flattened 1D signal
-        if x.dim() > 2:
-            x = x.view(x.size(0), -1)
+        if self.use_conv_stem and self.conv_stem is not None:
+            x = self.conv_stem(x)
+        else:
+            if x.dim() > 2:
+                x = x.view(x.size(0), -1)
             
         x = self.norm1(self.layer1(x)) 
         x = self.norm2(self.layer2(x))

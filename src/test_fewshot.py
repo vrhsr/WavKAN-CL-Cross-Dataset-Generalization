@@ -96,7 +96,10 @@ def main(args):
         
         # 1.a. Re-initialize model with Pre-trained Weights (Reset for each k)
         if args.model == 'wavkan':
-            model = WavKANClassifier(input_dim=250, num_classes=2).to(device)
+            model = WavKANClassifier(input_dim=250, num_classes=2,
+                                   hidden_dim=args.hidden_dim,
+                                   wavelet_type=args.wavelet_type,
+                                   depth=args.depth).to(device)
         elif args.model == 'resnet':
             model = ResNet1D(in_channels=1, num_classes=2).to(device)
         elif args.model == 'vit':
@@ -162,5 +165,8 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp'])
     parser.add_argument('--pretrained_path', type=str, default=None, help='Path to pre-trained weights')
     parser.add_argument('--linear_probe', action='store_true', help='Freeze encoder, train classifier only')
+    parser.add_argument('--hidden_dim', type=int, default=64, help='Hidden dimension for WavKAN')
+    parser.add_argument('--wavelet_type', type=str, default='mexican_hat', choices=['mexican_hat', 'morlet'])
+    parser.add_argument('--depth', type=int, default=3, help='Network depth for WavKAN')
     args = parser.parse_args()
     main(args)
