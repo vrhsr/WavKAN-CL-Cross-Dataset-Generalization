@@ -8,6 +8,7 @@ import numpy as np
 from src.models.wavkan import WavKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
 from src.models.spline_kan import SplineKANClassifier
+from src.models.dann import DANN
 
 
 def count_params(model):
@@ -82,6 +83,11 @@ def estimate_flops_manual(model_name, input_dim=250):
     elif model_name == 'mlp':
         # SimpleMLP: 250->256->128->2
         return (250*256) + (256*128) + (128*2)
+    elif model_name == 'dann':
+        # DANN Feature Extractor: 4 Conv1D blocks + AdaptiveAvgPool + FC classifier
+        conv_flops = (15*1*64*125) + (7*64*128*63) + (7*128*256*32) + (5*256*256*16)
+        fc_flops = (256*128) + (128*2)  # Label classifier only (inference)
+        return conv_flops + fc_flops
     return 0
 
 
@@ -95,9 +101,10 @@ def main():
         'ResNet-1D': ResNet1D(in_channels=1, num_classes=2),
         'ViT-1D': ViT1D(seq_len=250, num_classes=2),
         'SimpleMLP': SimpleMLP(input_dim=250, num_classes=2),
+        'DANN': DANN(in_channels=1, num_classes=2, feature_dim=256),
     }
     
-    model_keys = ['wavkan', 'spline_kan', 'resnet', 'vit', 'mlp']
+    model_keys = ['wavkan', 'spline_kan', 'resnet', 'vit', 'mlp', 'dann']
     
     # Dummy input: batch of 32 ECG signals
     dummy_input = torch.randn(32, 1, 250)

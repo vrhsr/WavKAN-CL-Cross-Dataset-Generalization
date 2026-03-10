@@ -8,6 +8,7 @@ from src.dataset import HarmonizedDataset
 from src.models.wavkan import WavKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
 from src.models.spline_kan import SplineKANClassifier
+from src.models.dann import DANN
 from sklearn.metrics import f1_score
 
 def evaluate_noise(model, test_file, snr_db, device, batch_size=32):
@@ -24,7 +25,10 @@ def evaluate_noise(model, test_file, snr_db, device, batch_size=32):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
-            outputs = model(inputs)
+            if isinstance(model, DANN):
+                outputs = model.predict(inputs)
+            else:
+                outputs = model(inputs)
             preds = torch.argmax(outputs, dim=1).cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.cpu().numpy())
@@ -46,6 +50,8 @@ def main(args):
         model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
     elif args.model == 'mlp':
         model = SimpleMLP(input_dim=250, num_classes=2).to(device)
+    elif args.model == 'dann':
+        model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
     else:
         raise ValueError("Unknown model")
         
@@ -83,6 +89,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
-    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp'])
+    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
     args = parser.parse_args()
     main(args)

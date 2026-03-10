@@ -9,6 +9,7 @@ from src.dataset import HarmonizedDataset
 from src.models.wavkan import WavKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
 from src.models.spline_kan import SplineKANClassifier
+from src.models.dann import DANN
 from sklearn.metrics import f1_score
 
 def get_k_shot_indices(dataset, k, seed=42):
@@ -40,7 +41,10 @@ def fine_tune(model, train_loader, epochs=10, lr=1e-4, device='cpu', linear_prob
         for param in model.parameters():
             param.requires_grad = False
         # Unfreeze classifier head only
-        if hasattr(model, 'classifier'):
+        if hasattr(model, 'label_classifier'):
+            for param in model.label_classifier.parameters():
+                param.requires_grad = True
+        elif hasattr(model, 'classifier'):
             for param in model.classifier.parameters():
                 param.requires_grad = True
         elif hasattr(model, 'mlp_head'):
@@ -58,7 +62,10 @@ def fine_tune(model, train_loader, epochs=10, lr=1e-4, device='cpu', linear_prob
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
             optimizer.zero_grad()
-            outputs = model(inputs)
+            if isinstance(model, DANN):
+                outputs = model.predict(inputs)
+            else:
+                outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -71,7 +78,10 @@ def evaluate(model, loader, device):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
-            outputs = model(inputs)
+            if isinstance(model, DANN):
+                outputs = model.predict(inputs)
+            else:
+                outputs = model(inputs)
             preds = torch.argmax(outputs, dim=1).cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.cpu().numpy())
@@ -108,6 +118,8 @@ def main(args):
             model = SimpleMLP(input_dim=250, num_classes=2).to(device)
         elif args.model == 'spline_kan':
             model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
+        elif args.model == 'dann':
+            model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
             
         # Load Zero-Shot Weights (Starting point)
         # Load Weights (Zero-Shot or SSL)
@@ -162,7 +174,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
-    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp'])
+    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
     parser.add_argument('--pretrained_path', type=str, default=None, help='Path to pre-trained weights')
     parser.add_argument('--linear_probe', action='store_true', help='Freeze encoder, train classifier only')
     parser.add_argument('--hidden_dim', type=int, default=64, help='Hidden dimension for WavKAN')

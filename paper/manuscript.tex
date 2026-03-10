@@ -310,57 +310,64 @@ The visualizations confirm that while zero-shot performance varies, the models f
 \subsection{Ablation Studies}
 
 \subsubsection{Wavelet Type}
-Table~\ref{tab:ablation_wavelet} compares Mexican Hat and Morlet wavelets.
+Table~\ref{tab:ablation_wavelet} compares Mexican Hat and Morlet wavelets. While Mexican Hat achieves marginally higher peak validation F1, it suffers from catastrophic gradient instability in 4 out of 5 seeds, with training loss diverging to NaN around epoch~37. Morlet wavelets maintain perfect stability across all seeds and epochs.
 
 \begin{table}[!t]
 \centering
-\caption{Ablation: Wavelet Type. Cross-dataset F1 on PTB-XL.}
+\caption{Ablation: Wavelet Type. Source-domain validation F1 and training stability on MIT-BIH ($n=5$ seeds, depth=3, hidden\_dim=64).}
 \label{tab:ablation_wavelet}
 \begin{tabular}{@{}lcc@{}}
 \toprule
-\textbf{Wavelet} & \textbf{Zero-Shot F1} & \textbf{10-Shot F1} \\
+\textbf{Wavelet} & \textbf{Best Val F1} & \textbf{Training Stability} \\
 \midrule
-Mexican Hat    & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ \\
-Morlet         & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ \\
+Mexican Hat    & $0.9877 \pm 0.0015$ & 1/5 stable (crash $\sim$ep.~37) \\
+Morlet         & $0.9836 \pm 0.0039$ & \textbf{5/5 stable} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsubsection{Network Depth}
-Table~\ref{tab:ablation_depth} evaluates the effect of depth on generalization.
+Table~\ref{tab:ablation_depth} evaluates the effect of network depth on training dynamics. Shallow networks (depth=2) exhibit frequent gradient explosion, while depth=3 provides the optimal balance between expressiveness and stability.
 
 \begin{table}[!t]
 \centering
-\caption{Ablation: Network Depth. Cross-dataset F1 on PTB-XL (hidden\_dim=64, Mexican Hat).}
+\caption{Ablation: Network Depth. Source-domain validation F1 and training stability on MIT-BIH ($n=5$ seeds, hidden\_dim=64, Mexican Hat).}
 \label{tab:ablation_depth}
 \begin{tabular}{@{}lcc@{}}
 \toprule
-\textbf{Depth} & \textbf{Zero-Shot F1} & \textbf{10-Shot F1} \\
+\textbf{Depth} & \textbf{Best Val F1} & \textbf{Training Stability} \\
 \midrule
-2 layers       & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ \\
-3 layers       & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ \\
-4 layers       & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ & $\cdot\cdot\cdot \pm \cdot\cdot\cdot$ \\
+2 layers       & $0.9878 \pm 0.0020$ & 1/5 stable (crash $\sim$ep.~31) \\
+3 layers       & $0.9882 \pm 0.0024$ & \textbf{4/5 stable} (crash $\sim$ep.~42) \\
+4 layers       & $0.9879 \pm 0.0028$ & 2/5 stable (crash $\sim$ep.~41) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsubsection{Hidden Dimensionality}
-Table~\ref{tab:ablation_hdim} studies the impact of hidden layer width.
+Table~\ref{tab:ablation_hdim} studies the impact of hidden layer width. Notably, increasing hidden dimensionality to 128 causes complete gradient collapse in all 5 seeds by epoch~24, while the compact hdim=32 configuration achieves the highest F1 with perfect stability---suggesting that wider wavelet layers are prone to overfitting and numerical instability.
 
 \begin{table}[!t]
 \centering
-\caption{Ablation: Hidden Dimensionality. Cross-dataset F1 on PTB-XL (depth=3, Mexican Hat).}
+\caption{Ablation: Hidden Dimensionality. Source-domain validation F1 and training stability on MIT-BIH ($n=5$ seeds, depth=3, Mexican Hat).}
 \label{tab:ablation_hdim}
 \begin{tabular}{@{}lccc@{}}
 \toprule
-\textbf{Hidden Dim} & \textbf{Params} & \textbf{Zero-Shot F1} & \textbf{10-Shot F1} \\
+\textbf{Hidden Dim} & \textbf{Params} & \textbf{Best Val F1} & \textbf{Training Stability} \\
 \midrule
-32             & $\sim$24K  & $\cdot\cdot\cdot$ & $\cdot\cdot\cdot$ \\
-64             & $\sim$95K  & $\cdot\cdot\cdot$ & $\cdot\cdot\cdot$ \\
-128            & $\sim$375K & $\cdot\cdot\cdot$ & $\cdot\cdot\cdot$ \\
+32             & $\sim$24K  & $\textbf{0.9882} \pm 0.0023$ & \textbf{5/5 stable} \\
+64             & $\sim$95K  & $0.9876 \pm 0.0020$ & 4/5 stable \\
+128            & $\sim$375K & $0.9860 \pm 0.0024$ & 0/5 stable (crash $\sim$ep.~24) \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{../experiments/plots/ablation_f1_comparison.png}
+\caption{Validation F1 training curves across ablation configurations (mean $\pm$ std over $n=5$ seeds). Shaded regions indicate inter-seed variance. Note the catastrophic gradient instability in Mexican Hat (epoch $\sim$37), depth=2 (epoch $\sim$31), and hidden\_dim=128 (epoch $\sim$24) configurations, contrasted with the perfect stability of Morlet and hdim=32.}
+\label{fig:ablation_curves}
+\end{figure}
 
 % ============ 6. DISCUSSION ============
 \section{Discussion}

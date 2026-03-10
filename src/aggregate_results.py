@@ -11,7 +11,7 @@ import numpy as np
 
 def aggregate_fewshot():
     """Aggregate few-shot results across seeds."""
-    models = ['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp']
+    models = ['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann']
     summary = {}
     
     for model in models:
@@ -46,7 +46,7 @@ def aggregate_fewshot():
 
 def aggregate_robustness():
     """Aggregate robustness results across seeds."""
-    models = ['wavkan', 'resnet', 'vit', 'spline_kan']
+    models = ['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann']
     summary = {}
     
     for model in models:
@@ -126,7 +126,7 @@ def print_paper_table():
 
 def aggregate_zeroshot():
     """Aggregate zero-shot results across seeds."""
-    models = ['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp']
+    models = ['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann']
     summary = {}
     
     for model in models:
