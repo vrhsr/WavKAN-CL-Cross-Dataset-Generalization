@@ -8,7 +8,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\experiments\run_dann.ps1
 # ================================================================
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = "Stop"
 $seeds = @(42, 123, 456, 789, 2024)
 
 Write-Host "============================================="
@@ -21,7 +21,7 @@ foreach ($seed in $seeds) {
     $ckpt = "experiments/dann_seed${seed}.pth"
     if (-not (Test-Path $ckpt)) {
         Write-Host "`n--- Training DANN seed=$seed ---"
-        python -m src.train_dann --epochs 50 --seed $seed --num_workers 4 --batch_size 64
+        python -m src.train_dann --epochs 50 --seed $seed --num_workers 0 --batch_size 64
     } else {
         Write-Host "--- DANN seed=$seed already exists. Skipping. ---"
     }
