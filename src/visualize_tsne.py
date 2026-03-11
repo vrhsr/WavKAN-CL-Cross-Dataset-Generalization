@@ -14,6 +14,7 @@ from src.dataset import HarmonizedDataset
 from src.models.wavkan import WavKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
 from src.models.spline_kan import SplineKANClassifier
+from src.models.dann import DANN
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 OUTPUT_DIR = 'experiments/plots'
@@ -47,7 +48,10 @@ def extract_features(model, loader, device, model_name, max_samples=2000):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs = inputs.to(device).float()
-            _ = model(inputs)
+            
+            # Forward pass
+            out = model(inputs)
+            # DANN returns (class_out, domain_out), others return just out
             
             if 'features' in hook_features:
                 feat = hook_features['features'].cpu().numpy()
@@ -116,7 +120,7 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
 def load_model(name, device):
     """Re-instantiate and load model weights."""
     if name == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2)
+        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=128)
     elif name == 'spline_kan':
         model = SplineKANClassifier(input_dim=250, num_classes=2)
     elif name == 'resnet':
@@ -125,6 +129,8 @@ def load_model(name, device):
         model = ViT1D(seq_len=250, num_classes=2)
     elif name == 'mlp':
         model = SimpleMLP(input_dim=250, num_classes=2)
+    elif name == 'dann':
+        model = DANN(in_channels=1, num_classes=2, feature_dim=256)
     else:
         raise ValueError(f"Unknown model: {name}")
     
@@ -159,7 +165,7 @@ def main():
     mit_loader = DataLoader(mit_subset, batch_size=256, shuffle=False)
     ptb_loader = DataLoader(ptb_subset, batch_size=256, shuffle=False)
     
-    models = ['wavkan', 'spline_kan', 'resnet', 'vit']
+    models = ['wavkan', 'spline_kan', 'resnet', 'vit', 'dann']
     
     for model_name in models:
         print(f"\nProcessing {model_name}...")

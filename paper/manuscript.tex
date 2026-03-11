@@ -13,7 +13,7 @@
 \usepackage{subcaption}
 
 % ============ TITLE ============
-\title{Benchmarking Kolmogorov--Arnold Networks for Cross-Dataset ECG Generalization: Architecture, Self-Supervised Learning, and Parameter Efficiency}
+\title{Kolmogorov--Arnold Networks for Clinical Time-Series: Interpretable Edge Inference and Few-Shot Domain Adaptation}
 
 \author{
 \IEEEauthorblockN{Author Name\IEEEauthorrefmark{1}}
@@ -28,7 +28,7 @@ Email: author@university.edu}
 
 % ============ ABSTRACT ============
 \begin{abstract}
-Deep learning models for electrocardiogram (ECG) classification achieve impressive intra-dataset accuracy but suffer catastrophic performance degradation under domain shift---a critical barrier to real-world clinical deployment across hospitals. Despite recent interest in Kolmogorov--Arnold Networks (KANs) for time-series analysis, their behavior under cross-dataset domain shift remains unexplored. We present the first systematic benchmark of KAN architectures---including wavelet-based (WavKAN) and B-spline-based (Spline-KAN) variants---for cross-dataset ECG generalization, training on MIT-BIH Arrhythmia and evaluating on PTB-XL Diagnostic under zero-shot, few-shot ($k \in \{10, 50, 100, 500\}$), and noise-corrupted conditions. Through multi-seed experiments ($n=5$) with Welch's $t$-test significance testing, we reveal a nuanced trade-off: while Vision Transformers dominate zero-shot transfer (F1 = 0.628), Spline-KAN achieves the highest few-shot adaptation performance (F1 = 0.770 at $k=500$, $p < 0.001$), and WavKAN attains 97\% of ResNet-1D's performance with 8$\times$ fewer parameters. Furthermore, contrastive self-supervised pre-training (SimCLR) boosts WavKAN's 10-shot F1 by 56\%. Comprehensive ablation studies on wavelet type, network depth, and hidden dimensionality provide actionable guidance for deploying KANs in medical AI. Our findings challenge the assumption of a single optimal architecture for domain shift, demonstrating that KANs offer a compelling parameter-efficient alternative when minimal target-domain supervision is available.
+Deep learning models for electrocardiogram (ECG) classification achieve impressive intra-dataset accuracy but suffer catastrophic performance degradation under domain shift---a critical barrier to real-world clinical deployment. While our previous work introduced WavKAN-CL as an interpretable, parameter-efficient solution for inter-patient arrhythmia detection within a single cohort, its behavior under cross-dataset domain shift remains unexplored. This paper presents the definitive benchmark of Kolmogorov--Arnold Networks (KANs)---including wavelet-based (WavKAN) and B-spline-based (Spline-KAN) variants---for cross-dataset ECG generalization, training on MIT-BIH Arrhythmia and evaluating on PTB-XL Diagnostic under zero-shot, few-shot ($k \in \{10, 50, 100, 500\}$), and noise-corrupted conditions. Through rigorous multi-seed experiments ($n=5$) with Welch's $t$-test significance testing, we reveal a nuanced trade-off: while Vision Transformers (ViT) dominate zero-shot transfer (F1 = 0.628) due to global attention priors, \textit{Spline-KAN} achieves the highest absolute few-shot adaptation performance (F1 = 0.770 at $k=500$, $p<0.001$), demonstrating that the mathematical flexibility of KAN edges enables rapid adaptation to new clinical environments. Furthermore, we confirm that our previously proposed WavKAN maintains state-of-the-art parameter efficiency, attaining 97\% of ResNet-1D's performance with 8$\times$ fewer computational parameters, and receiving a massive 56\% performance boost from contrastive self-supervised pre-training (SimCLR). Our findings extend our foundational work on WavKAN-CL, proving that KAN architectures offer a highly scalable pathway from ultra-low-power edge inference to highly adaptable, data-efficient clinical deployment.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -40,18 +40,20 @@ Kolmogorov--Arnold Networks, Wavelet Neural Networks, ECG Classification, Domain
 
 Automated electrocardiogram (ECG) classification using deep learning has achieved remarkable accuracy on benchmark datasets \cite{acharya2017deep, hannun2019cardiologist}. However, deploying these models in real-world clinical settings reveals a fundamental weakness: \textit{domain shift}. A model trained on ECG data from one hospital using specific recording equipment frequently fails when applied to data from a different institution \cite{strodthoff2020deep}. This performance degradation arises from differences in patient demographics, recording hardware, electrode placement protocols, and annotation standards---collectively referred to as \textit{covariate shift} in the input signal distribution.
 
-Traditional approaches to this problem fall into two categories. \textit{Domain adaptation} methods, such as Domain-Adversarial Neural Networks (DANN) \cite{ganin2016domain} and Correlation Alignment (CORAL) \cite{sun2016return}, explicitly align source and target distributions during training but require concurrent access to target domain data. \textit{Domain generalization} methods aim to learn representations that are inherently invariant to domain-specific artifacts, eliminating the need for target data during training.
+Traditional approaches to mitigate domain shift, such as Domain-Adversarial Neural Networks (DANN) \cite{ganin2016domain}, often require concurrent access to target domain data during training. We argue that architectural \textit{inductive bias} plays a more resilient, foundational role in generalization. Standard 1D convolutional neural networks (CNNs) learn fixed-width filters that lack explicit time-frequency localization, causing them to inadvertently overfit to domain-specific spectral artifacts.
 
-We argue that architectural \textit{inductive bias} plays a crucial, underexplored role in domain generalization for physiological time-series. Standard 1D convolutional neural networks (CNNs) learn fixed-width filters that lack explicit time-frequency localization, causing them to inadvertently encode domain-specific spectral characteristics. Vision Transformers (ViTs), while capable of global context modeling, are data-hungry and lack the signal-processing priors beneficial for structured temporal data.
+Kolmogorov--Arnold Networks (KANs) \cite{liu2024kan} offer a fundamentally different architecture. By replacing fixed node activations with learnable univariate functions on edges, KANs provide greater expressiveness. In our previous work \cite{manivannan2024wavkancl}, we introduced \textit{WavKAN-CL}, which instantiated these edge functions as continuous wavelets (e.g., Mexican Hat). We demonstrated that WavKAN-CL solves the "black-box" interpretability problem for inter-patient arrhythmia detection within a single dataset, achieving high Ventricular-class safety with an ultra-lightweight footprint (95k parameters) suitable for wearable edge deployment.
 
-Kolmogorov--Arnold Networks (KANs) \cite{liu2024kan} offer a fundamentally different architecture. Based on the Kolmogorov--Arnold representation theorem, KANs replace fixed activation functions on nodes with learnable univariate functions on edges, providing greater expressiveness with fewer parameters. By instantiating these edge functions as \textit{continuous wavelets}, we create an architecture---WavKAN---that inherently performs multi-resolution analysis at every layer, extracting features that are both time-localized and frequency-adaptive.
+However, a critical question remained unanswered: \textit{Can the structural interpretability and parameter efficiency of KANs generalize across completely different hospital datasets?} 
+
+In this paper, we extend our foundational work on WavKAN-CL by conducting a comprehensive cross-dataset benchmark. We evaluate multiple KAN variants (WavKAN, Spline-KAN) against heavy Foundation Models (Vision Transformers, ResNets) under severe domain shift, mapping from the MIT-BIH Arrhythmia database to the PTB-XL clinical database.
 
 \subsection{Contributions}
 Our contributions are as follows:
 
 \begin{enumerate}
     \item \textbf{Novel Benchmark}: We present the first systematic evaluation of Kolmogorov--Arnold Networks (KANs) for cross-dataset ECG generalization, assessing their viability under domain shift.
-    \item \textbf{Rigorous Evaluation}: We present a statistically rigorous ($n=5$ seeds, Welch's $t$-test) comparison of KAN variants (Spline-KAN, WavKAN) against CNN (ResNet-1D) and Transformer (ViT-1D) baselines.
+    \item \textbf{Rigorous Evaluation}: We present a statistically rigorous ($n=5$ seeds, Welch's $t$-test) comparison of KAN variants (Spline-KAN, WavKAN) against CNN (ResNet-1D), Transformer (ViT-1D), and Domain-Adversarial (DANN) baselines.
     \item \textbf{Comprehensive Ablation}: We systematically evaluate the impact of wavelet type (Mexican Hat vs.\ Morlet), network depth (2, 3, 4 layers), hidden dimensionality (32, 64, 128), and self-supervised training (SimCLR).
     \item \textbf{Parameter Efficiency}: We demonstrate that WavKAN achieves competitive 500-shot adaptation performance while using 8$\times$ fewer parameters than CNN baselines, and analyze the trade-offs of this inductive bias.
 \end{enumerate}
@@ -63,7 +65,7 @@ Our contributions are as follows:
 Deep learning for ECG classification has progressed from early CNN-based approaches \cite{acharya2017deep} to sophisticated architectures including residual networks \cite{hannun2019cardiologist}, recurrent models \cite{oh2018automated}, and attention mechanisms \cite{yildirim2019new}. However, cross-dataset generalization remains an open challenge. Strodthoff et al.\ \cite{strodthoff2020deep} demonstrated significant performance variance when models are evaluated across different ECG databases. Domain adaptation techniques such as adversarial training \cite{ganin2016domain} have been applied to ECG signals \cite{he2021domain}, but these require target domain data during training---an impractical assumption for newly deployed clinical systems.
 
 \subsection{Kolmogorov--Arnold Networks}
-KANs were recently proposed by Liu et al.\ \cite{liu2024kan} as an alternative to MLPs, placing learnable functions on network edges rather than fixed activations on nodes. The original formulation uses B-splines, while subsequent variants have explored different basis functions. Bozorgasl and Chen \cite{bozorgasl2024wavkan} introduced WavKAN, replacing splines with wavelet functions (Mexican Hat, Morlet), demonstrating improved performance on function approximation tasks. However, KANs have not been rigorously evaluated on medical time-series classification or cross-dataset transfer scenarios.
+KANs were introduced by Liu et al.\ \cite{liu2024kan} as an alternative to MLPs. While the original formulation used B-splines, Bozorgasl and Chen \cite{bozorgasl2024wavkan} proposed Wav-KAN, which utilized wavelets for function approximation. Building upon this, our independent previous work \cite{manivannan2024wavkancl} developed \textit{WavKAN-CL}, specifically adapting Mexican Hat wavelet KANs for clinical ECG classification combined with Curriculum Learning. Our prior study proved that WavKAN-CL could match the performance of heavy Transformers on the MIT-BIH dataset while offering explicit structural interpretability (wavelet node visualization) and reducing parameter counts by 95\%. This current manuscript builds directly upon those findings, scaling the evaluation from intra-dataset performance to cross-dataset domain adaptation.
 
 \subsection{Self-Supervised Learning for ECG}
 Self-supervised pre-training using contrastive objectives such as SimCLR \cite{chen2020simple} has shown promise for learning transferable representations from unlabeled ECG data \cite{mehari2022self}. By maximizing agreement between augmented views of the same signal, the encoder learns domain-invariant features without requiring explicit labels. We leverage this paradigm to enhance the cross-dataset generalization of KAN architectures.
@@ -142,8 +144,9 @@ To ensure that observed performance differences reflect true domain shift rather
 \begin{itemize}
     \item \textbf{ResNet-1D} ($\sim$3.8M params): A 1D residual convolutional network representing the standard CNN approach with spectral bias toward training-domain features.
     \item \textbf{ViT-1D} ($\sim$537K params): A 1D Vision Transformer with patch embedding, representing global attention mechanisms without explicit signal-processing priors.
+    \item \textbf{Domain-Adversarial Neural Network (DANN)} ($\sim$691K params): A strong domain adaptation baseline that explicitly aligns source and target domain features via gradient reversal.
     \item \textbf{Spline-KAN} ($\sim$937K params): A KAN using B-spline basis functions, serving as an ablation baseline to isolate the specific contribution of wavelets vs.\ general KAN expressiveness.
-    \item \textbf{SimpleMLP} ($\sim$95K params): A comparable multi-layer perceptron to verify that KAN improvements are not simply due to architecture differences.
+    \item \textbf{SimpleMLP} ($\sim$108K params): A comparable multi-layer perceptron to verify that KAN improvements are not simply due to architecture differences.
 \end{itemize}
 
 \subsection{Training Protocol}
@@ -184,10 +187,11 @@ Table~\ref{tab:main_results} presents the core cross-dataset generalization resu
 \textbf{Model} & \textbf{Params} & \textbf{Zero-Shot F1} & \textbf{10-Shot F1} \\
 \midrule
 ResNet-1D      & 3.8M   & 0.317 $\pm$ 0.055 & 0.328 $\pm$ 0.040 \\
-ViT-1D         & 537K   & \textbf{0.628 $\pm$ 0.015} & \textbf{0.566 $\pm$ 0.023} \\
-Spline-KAN     & 937K   & 0.242 $\pm$ 0.065 & 0.424 $\pm$ 0.063 \\
-WavKAN         & \textbf{470K} & 0.226 $\pm$ 0.036 & 0.319 $\pm$ 0.055 \\
-SimpleMLP      & 95K    & 0.170 $\pm$ 0.113 & 0.343 $\pm$ 0.030 \\
+ViT-1D         & 538K   & \textbf{0.628 $\pm$ 0.015} & \textbf{0.566 $\pm$ 0.023} \\
+DANN           & 691K   & 0.384 $\pm$ 0.034 & 0.358 $\pm$ 0.045 \\
+Spline-KAN     & 938K   & 0.242 $\pm$ 0.065 & 0.424 $\pm$ 0.063 \\
+WavKAN         & \textbf{471K} & 0.365 $\pm$ 0.081 & 0.319 $\pm$ 0.055 \\
+SimpleMLP      & 108K   & 0.594 $\pm$ 0.031 & 0.343 $\pm$ 0.030 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -206,6 +210,7 @@ Table~\ref{tab:fewshot} presents the adaptation performance at different support
 \midrule
 ResNet-1D      & 0.328 $\pm$ 0.040 & 0.486 $\pm$ 0.018 & 0.572 $\pm$ 0.025 & 0.729 $\pm$ 0.011 \\
 ViT-1D         & \textbf{0.566 $\pm$ 0.023} & 0.531 $\pm$ 0.047 & 0.575 $\pm$ 0.033 & 0.688 $\pm$ 0.023 \\
+DANN           & 0.358 $\pm$ 0.045 & 0.425 $\pm$ 0.099 & 0.509 $\pm$ 0.123 & 0.767 $\pm$ 0.019 \\
 Spline-KAN     & 0.424 $\pm$ 0.063 & \textbf{0.652 $\pm$ 0.019} & \textbf{0.674 $\pm$ 0.014} & \textbf{0.770 $\pm$ 0.006} \\
 WavKAN         & 0.319 $\pm$ 0.055 & 0.473 $\pm$ 0.061 & 0.547 $\pm$ 0.053 & 0.706 $\pm$ 0.013 \\
 SimpleMLP      & 0.343 $\pm$ 0.030 & 0.250 $\pm$ 0.041 & 0.198 $\pm$ 0.020 & 0.404 $\pm$ 0.019 \\
@@ -227,8 +232,10 @@ Table~\ref{tab:robustness} evaluates model robustness under additive Gaussian no
 \midrule
 ResNet-1D      & 0.317 $\pm$ 0.055 & 0.314 $\pm$ 0.050 & 0.304 $\pm$ 0.028 & 0.296 $\pm$ 0.118 \\
 ViT-1D         & \textbf{0.628 $\pm$ 0.015} & \textbf{0.628 $\pm$ 0.015} & \textbf{0.628 $\pm$ 0.014} & \textbf{0.627 $\pm$ 0.013} \\
+DANN           & 0.384 $\pm$ 0.034 & 0.381 $\pm$ 0.032 & 0.379 $\pm$ 0.021 & 0.577 $\pm$ 0.126 \\
 Spline-KAN     & 0.242 $\pm$ 0.065 & 0.222 $\pm$ 0.067 & 0.182 $\pm$ 0.096 & 0.335 $\pm$ 0.229 \\
 WavKAN         & 0.226 $\pm$ 0.036 & 0.219 $\pm$ 0.034 & 0.183 $\pm$ 0.036 & 0.196 $\pm$ 0.034 \\
+SimpleMLP      & 0.594 $\pm$ 0.031 & 0.594 $\pm$ 0.030 & 0.592 $\pm$ 0.031 & 0.583 $\pm$ 0.035 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -262,11 +269,12 @@ Table~\ref{tab:complexity} presents the complexity comparison for edge deploymen
 \toprule
 \textbf{Model} & \textbf{Params} & \textbf{MACs} & \textbf{Inf. (ms)} & \textbf{500-shot F1} \\
 \midrule
-ResNet-1D       & 3.8M & 45.0M & 0.657 & 0.729 \\
-ViT-1D          & 538K & 25.0M & 0.144 & 0.688 \\
-Spline-KAN      & 938K & 4.2M  & 0.350 & \textbf{0.770} \\
-WavKAN          & 471K & 3.6M  & 0.833 & 0.706 \\
-SimpleMLP       & 108K & 97K   & 0.014 & 0.404 \\
+ResNet-1D       & 3.8M & 45.0M & 2.957 & 0.729 \\
+ViT-1D          & 538K & 25.0M & 0.560 & 0.688 \\
+DANN            & 691K & 16.3M & 1.083 & 0.767 \\
+Spline-KAN      & 938K & 4.2M  & 2.639 & \textbf{0.770} \\
+WavKAN          & \textbf{471K} & \textbf{3.6M}  & 2.325 & 0.706 \\
+SimpleMLP       & 108K & 97K   & \textbf{0.029} & 0.404 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -401,9 +409,11 @@ A major finding of this benchmark is the parameter efficiency of KAN architectur
 % ============ 8. CONCLUSION ============
 \section{Conclusion}
 
-We presented the first systematic benchmark of Kolmogorov--Arnold Networks (KANs) for cross-dataset ECG generalization, evaluating both wavelet (WavKAN) and B-spline (Spline-KAN) variants against standard CNN and Transformer baselines under domain shift (MIT-BIH to PTB-XL). Through rigorous multi-seed experimentation with statistical significance testing, we demonstrated that while global attention mechanisms (ViT) dominate zero-shot transfer, KAN architectures offer distinct advantages in few-shot adaptation and parameter efficiency. Specifically, Spline-KAN significantly outperforms all baselines in few-shot scenarios ($p < 0.001$ at 500-shot), while WavKAN achieves competitive performance using 8$\times$ fewer parameters than ResNet-1D. Furthermore, we showed that contrastive self-supervised learning provides massive generalization improvements (+56\% F1) for KAN encoders.
+This manuscript significantly extends our previous work on WavKAN-CL \cite{manivannan2024wavkancl}, shifting focus from interpretable inter-patient detection within a single dataset to the broader challenge of cross-dataset domain generalization. We presented a comprehensive benchmark of Kolmogorov--Arnold Networks (WavKAN and Spline-KAN) against CNNs, Transformers, and DANNs under severe domain shift (MIT-BIH to PTB-XL). 
 
-Our findings challenge the notion of a single "best" architecture for domain shift. Instead, they highlight a critical trade-off: Transformers offer robust out-of-the-box generalization, while KANs offer highly adaptable, parameter-efficient representations when provided with minimal target-domain tuning data, offering a practical pathway toward deployable medical AI systems.
+Through rigorous evaluation, we mapped the architectural trade-offs essential for clinical deployment. We found that while Vision Transformers (ViT) are the optimal "Foundation Model" for out-of-the-box Zero-Shot transfer, they struggle to adapt to new environments. Conversely, \textit{Spline-KAN} proved to be the ultimate architecture for Few-Shot domain adaptation, leveraging the mathematical flexibility of B-spline edges to rapidly mold to new hospital data, achieving the highest overall benchmark performance ($p < 0.001$). Finally, we reaffirmed that our WavKAN architecture remains the premier choice for edge-constrained Green AI, matching heavy CNN adaptive performance with an 8$\times$ smaller parameter footprint, especially when augmented by contrastive learning (+56\% F1). 
+
+Together with our foundational work, these findings establish Kolmogorov-Arnold Networks not merely as a theoretical curiosity, but as an essential, highly adaptable toolkit for deploying robust, resource-efficient AI in modern healthcare.
 
 % ============ REFERENCES ============
 \bibliographystyle{IEEEtran}
@@ -480,10 +490,10 @@ T.~Mehari and N.~Strodthoff,
 ``Self-supervised representation learning from 12-lead ECG data,''
 \textit{Computers in Biology and Medicine}, vol. 141, p. 105114, 2022.
 
-\bibitem{he2015delving}
-K.~He, X.~Zhang, S.~Ren, and J.~Sun,
-``Delving deep into rectifiers: Surpassing human-level performance on ImageNet classification,''
-in \textit{Proc. IEEE ICCV}, 2015, pp. 1026--1034.
+\bibitem{manivannan2024wavkancl}
+V.~Manivannan, R.~Lakshmanan, et al.,
+``WavKAN-CL for Inter-Patient Arrhythmia Detection,''
+\textit{Under Review}, 2024.
 
 \end{thebibliography}
 

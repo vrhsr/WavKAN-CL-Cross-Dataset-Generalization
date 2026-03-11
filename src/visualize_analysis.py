@@ -13,6 +13,7 @@ from src.dataset import HarmonizedDataset
 from src.models.wavkan import WavKANClassifier
 from src.models.spline_kan import SplineKANClassifier
 from src.models.baselines import ResNet1D, ViT1D
+from src.models.dann import DANN
 
 # Config
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -23,13 +24,15 @@ OUTPUT_DIR = 'experiments/plots'
 def load_model(name):
     # Re-instantiate model structure
     if name == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2)
+        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=128)
     elif name == 'spline_kan':
         model = SplineKANClassifier(input_dim=250, num_classes=2)
     elif name == 'resnet':
         model = ResNet1D(in_channels=1, num_classes=2)
     elif name == 'vit':
         model = ViT1D(seq_len=250, num_classes=2)
+    elif name == 'dann':
+        model = DANN(in_channels=1, num_classes=2, feature_dim=256)
     
     # Load weights
     path = os.path.join(CHECKPOINT_DIR, f"{name}_endpoint.pth")
@@ -157,7 +160,7 @@ def main():
     except StopIteration:
         return
 
-    models = ['wavkan', 'spline_kan', 'resnet', 'vit']
+    models = ['wavkan', 'spline_kan', 'resnet', 'vit', 'dann']
     
     for m_name in models:
         print(f"Processing {m_name}...")
@@ -176,7 +179,10 @@ def main():
         with torch.no_grad():
             for bx, by in loader:
                 bx = bx.to(DEVICE).float()
-                outputs = model(bx)
+                if hasattr(model, 'predict'):
+                    outputs = model.predict(bx)
+                else:
+                    outputs = model(bx)
                 preds = torch.argmax(outputs, dim=1).cpu().numpy()
                 all_preds.extend(preds)
                 all_labels.extend(by.numpy())

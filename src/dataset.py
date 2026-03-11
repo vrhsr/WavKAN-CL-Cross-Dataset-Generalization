@@ -15,14 +15,19 @@ class HarmonizedDataset(Dataset):
         """
         print(f"Loading dataset from {csv_file}...")
         self.noise_snr_db = noise_snr_db
-        df = pd.read_csv(csv_file)
+        # Optimize memory by specifying float32 immediately
+        # Read just columns first to build dtype dict without loading data
+        cols = pd.read_csv(csv_file, nrows=0).columns
+        self.signal_cols = [c for c in cols if str(c).isdigit()]
+        dtype_dict = {c: np.float32 for c in self.signal_cols}
+        dtype_dict['label'] = np.int16
+        if 'patient_id' in cols:
+            dtype_dict['patient_id'] = np.int32
+            
+        df = pd.read_csv(csv_file, dtype=dtype_dict)
         
-        # Identify signal columns (0..249)
-        # We assume columns that are numeric strings are the signal
-        self.signal_cols = [c for c in df.columns if str(c).isdigit()]
-        
-        self.X = df[self.signal_cols].values.astype(np.float32)
-        self.y = df['label'].values.astype(np.int64)
+        self.X = df[self.signal_cols].values
+        self.y = df['label'].values
         
         print(f"Loaded {len(df)} samples. Shape: {self.X.shape}")
         if self.noise_snr_db is not None:
