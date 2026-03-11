@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+from sklearn.metrics import silhouette_score
 from torch.utils.data import DataLoader, Subset
 import os
 import argparse
@@ -17,7 +18,7 @@ from src.models.spline_kan import SplineKANClassifier
 from src.models.dann import DANN
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-OUTPUT_DIR = 'experiments/plots'
+OUTPUT_DIR = 'paper/plots'
 
 
 def extract_features(model, loader, device, model_name, max_samples=2000):
@@ -41,6 +42,8 @@ def extract_features(model, loader, device, model_name, max_samples=2000):
         handle = model.fc.register_forward_hook(get_hook('features'))
     elif hasattr(model, 'mlp_head'):
         handle = model.mlp_head.register_forward_hook(get_hook('features'))
+    elif hasattr(model, 'label_classifier'):
+        handle = model.label_classifier.register_forward_hook(get_hook('features'))
     else:
         print(f"Cannot find classifier layer for {model_name}")
         return None, None
@@ -76,9 +79,21 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
     if features is None:
         return
     
-    print(f"  Running t-SNE for {model_name} ({features.shape[0]} samples)...")
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
-    embeddings = tsne.fit_transform(features)
+    embedding_path = save_path.replace('.png', '.npy')
+    if os.path.exists(embedding_path):
+        embeddings = np.load(embedding_path)
+    else:
+        print(f"  Running t-SNE for {model_name} ({features.shape[0]} samples)...")
+        tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
+        embeddings = tsne.fit_transform(features)
+        np.save(embedding_path, embeddings)
+        
+    score = silhouette_score(embeddings, labels)
+    print(f"  {model_name} Silhouette Score: {score:.3f}")
+    
+    # Save score to text file auxiliary
+    with open(save_path.replace('.png', '.txt'), 'w') as f:
+        f.write(str(score))
     
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
@@ -90,8 +105,8 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
         mask = labels == cls_idx
         ax.scatter(embeddings[mask, 0], embeddings[mask, 1], 
                    c=colors[cls_idx], label=class_names[cls_idx],
-                   alpha=0.5, s=10)
-    ax.set_title(f'{model_name} — Colored by Class')
+                   alpha=0.6, s=15)
+    ax.set_title(f'Colored by Class')
     ax.legend(fontsize=10)
     ax.set_xlabel('t-SNE 1')
     ax.set_ylabel('t-SNE 2')
@@ -104,17 +119,17 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
         mask = dataset_labels == ds_idx
         ax.scatter(embeddings[mask, 0], embeddings[mask, 1],
                    c=ds_colors[ds_idx], label=ds_names[ds_idx],
-                   alpha=0.5, s=10)
-    ax.set_title(f'{model_name} — Colored by Domain')
+                   alpha=0.6, s=15)
+    ax.set_title(f'Colored by Domain')
     ax.legend(fontsize=10)
     ax.set_xlabel('t-SNE 1')
     ax.set_ylabel('t-SNE 2')
     
-    plt.suptitle(f'Latent Space Visualization: {model_name}', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig(save_path, dpi=200, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {save_path}")
+    return score
 
 
 def load_model(name, device):
@@ -190,26 +205,52 @@ def main():
         ])
         
         save_path = os.path.join(OUTPUT_DIR, f'tsne_{model_name}.png')
-        plot_tsne_single(all_features, all_labels, dataset_labels, model_name, save_path)
+        if not os.path.exists(save_path):
+            plot_tsne_single(all_features, all_labels, dataset_labels, model_name, save_path)
+        else:
+            print(f"  Plot already exists for {model_name}, skipping computation.")
     
     # Create comparative grid
     print("\nGenerating comparison grid...")
-    fig, axes = plt.subplots(2, 2, figsize=(16, 16))
+    
+    # Pretty names mapping
+    pretty_names = {
+        'wavkan': 'WavKAN',
+        'spline_kan': 'Spline-KAN',
+        'resnet': 'ResNet-1D',
+        'vit': 'ViT-1D',
+        'dann': 'DANN (Domain Adversarial)'
+    }
+    
+    fig, axes = plt.subplots(3, 2, figsize=(24, 15))
     axes = axes.flatten()
     
     for idx, model_name in enumerate(models):
         img_path = os.path.join(OUTPUT_DIR, f'tsne_{model_name}.png')
+        score_path = os.path.join(OUTPUT_DIR, f'tsne_{model_name}.txt')
+        
+        score_text = ""
+        if os.path.exists(score_path):
+            with open(score_path, 'r') as f:
+                score = float(f.read().strip())
+                score_text = f" (Silhouette: {score:.3f})"
+                
         if os.path.exists(img_path):
             img = plt.imread(img_path)
             axes[idx].imshow(img)
-            axes[idx].set_title(model_name, fontsize=14, fontweight='bold')
+            name_str = pretty_names.get(model_name, model_name) + score_text
+            axes[idx].set_title(name_str, fontsize=18, fontweight='bold', pad=10)
         axes[idx].axis('off')
+        
+    # Hide the 6th empty subplot
+    axes[5].axis('off')
     
-    plt.suptitle('Latent Space Comparison Across Architectures', fontsize=16, fontweight='bold')
+    plt.suptitle('Latent Space Comparison Across Architectures', fontsize=24, fontweight='bold', y=0.98)
     plt.tight_layout()
-    plt.savefig(os.path.join(OUTPUT_DIR, 'tsne_comparison.png'), dpi=200, bbox_inches='tight')
+    plt.subplots_adjust(wspace=0.02, hspace=0.2, top=0.93)
+    plt.savefig(os.path.join(OUTPUT_DIR, 'tsne_comparison.png'), dpi=200, bbox_inches='tight', pad_inches=0.1)
     plt.close()
-    print("Done. All t-SNE plots saved to experiments/plots/")
+    print("Done. All t-SNE plots saved to paper/plots/")
 
 
 if __name__ == "__main__":

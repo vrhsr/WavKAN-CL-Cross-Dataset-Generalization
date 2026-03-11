@@ -11,7 +11,7 @@ from src.models.spline_kan import SplineKANClassifier
 from src.models.dann import DANN
 from sklearn.metrics import f1_score
 
-def evaluate_noise(model, test_file, snr_db, device, batch_size=32):
+def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_input=False):
     """
     Evaluates model on a dataset with injected noise.
     """
@@ -25,6 +25,8 @@ def evaluate_noise(model, test_file, snr_db, device, batch_size=32):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
+            if normalize_input:
+                inputs = (inputs - inputs.mean(dim=-1, keepdim=True)) / (inputs.std(dim=-1, keepdim=True) + 1e-6)
             if isinstance(model, DANN):
                 outputs = model.predict(inputs)
             else:
@@ -41,7 +43,7 @@ def main(args):
     
     # 1. Initialize and Load Model
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2).to(device)
+        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=128).to(device)
     elif args.model == 'resnet':
         model = ResNet1D(in_channels=1, num_classes=2).to(device)
     elif args.model == 'vit':
@@ -75,14 +77,15 @@ def main(args):
     for snr in snr_levels:
         label = "Clean" if snr is None else f"{snr}dB"
         print(f"Testing at {label}...")
-        f1 = evaluate_noise(model, args.ptb_file, snr, device)
+        f1 = evaluate_noise(model, args.ptb_file, snr, device, normalize_input=args.normalize_input)
         results[label] = f1
         print(f"-> F1 Score: {f1:.4f}")
         
     # 3. Save Results
     df_res = pd.DataFrame([results])
     df_res.index = [args.model]
-    save_path = f"experiments/robustness_{args.model}.csv"
+    filename = f"robustness_{args.model}_norm.csv" if args.normalize_input else f"robustness_{args.model}.csv"
+    save_path = f"experiments/{filename}"
     df_res.to_csv(save_path)
     print(f"\nSaved results to {save_path}")
 
@@ -90,5 +93,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
     parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
+    parser.add_argument('--normalize_input', action='store_true')
     args = parser.parse_args()
     main(args)

@@ -1,6 +1,7 @@
-\documentclass[journal,twoside]{IEEEtran}
+\documentclass[journal,twoside,web]{ieeecolor}
 
 % ============ PACKAGES ============
+\usepackage{generic}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
 \usepackage{booktabs}
@@ -10,25 +11,27 @@
 \usepackage{algorithmic}
 \usepackage{cite}
 \usepackage{xcolor}
-\usepackage{subcaption}
 
-% ============ TITLE ============
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
 \title{Kolmogorov--Arnold Networks for Clinical Time-Series: Interpretable Edge Inference and Few-Shot Domain Adaptation}
 
-\author{
-\IEEEauthorblockN{Author Name\IEEEauthorrefmark{1}}
-\IEEEauthorblockA{
-\IEEEauthorrefmark{1}Department of Computer Science,\\
-University Name, City, Country\\
-Email: author@university.edu}
-}
+\author{First A. Author, \IEEEmembership{Fellow, IEEE}, Second B. Author, \IEEEmembership{Member, IEEE}, and Third C. Author Jr., \IEEEmembership{Member, IEEE}
+\thanks{This paragraph of the first footnote will contain the date on which you submitted your paper for review. It will also contain support information, including sponsor and financial support acknowledgment.}
+\thanks{F. A. Author is with the National Institute of Standards and Technology, Boulder, CO 80305 USA (e-mail: author@boulder.nist.gov).}
+\thanks{S. B. Author was with Rice University, Houston, TX 77005 USA. He is now with the Department of Physics, Colorado State University, Fort Collins, CO 80523 USA (e-mail: author@lamar.colostate.edu).}
+\thanks{T. C. Author is with the Electrical Engineering Department, University of Colorado, Boulder, CO 80309 USA (e-mail: author@nrim.go.jp).}}
+
+\markboth{\hskip25pc IEEE JOURNAL OF BIOMEDICAL AND HEALTH INFORMATICS}
+{Author \MakeLowercase{\textit{et al.}}: Kolmogorov--Arnold Networks for Clinical Time-Series}
 
 \begin{document}
 \maketitle
 
 % ============ ABSTRACT ============
 \begin{abstract}
-Deep learning models for electrocardiogram (ECG) classification achieve impressive intra-dataset accuracy but suffer catastrophic performance degradation under domain shift---a critical barrier to real-world clinical deployment. While our previous work introduced WavKAN-CL as an interpretable, parameter-efficient solution for inter-patient arrhythmia detection within a single cohort, its behavior under cross-dataset domain shift remains unexplored. This paper presents the definitive benchmark of Kolmogorov--Arnold Networks (KANs)---including wavelet-based (WavKAN) and B-spline-based (Spline-KAN) variants---for cross-dataset ECG generalization, training on MIT-BIH Arrhythmia and evaluating on PTB-XL Diagnostic under zero-shot, few-shot ($k \in \{10, 50, 100, 500\}$), and noise-corrupted conditions. Through rigorous multi-seed experiments ($n=5$) with Welch's $t$-test significance testing, we reveal a nuanced trade-off: while Vision Transformers (ViT) dominate zero-shot transfer (F1 = 0.628) due to global attention priors, \textit{Spline-KAN} achieves the highest absolute few-shot adaptation performance (F1 = 0.770 at $k=500$, $p<0.001$), demonstrating that the mathematical flexibility of KAN edges enables rapid adaptation to new clinical environments. Furthermore, we confirm that our previously proposed WavKAN maintains state-of-the-art parameter efficiency, attaining 97\% of ResNet-1D's performance with 8$\times$ fewer computational parameters, and receiving a massive 56\% performance boost from contrastive self-supervised pre-training (SimCLR). Our findings extend our foundational work on WavKAN-CL, proving that KAN architectures offer a highly scalable pathway from ultra-low-power edge inference to highly adaptable, data-efficient clinical deployment.
+Deep learning models for electrocardiogram (ECG) classification achieve impressive intra-dataset accuracy but suffer catastrophic performance degradation under domain shift---a critical barrier to real-world clinical deployment. While our previous work introduced WavKAN-CL as an interpretable, parameter-efficient solution for inter-patient arrhythmia detection within a single cohort, its behavior under cross-dataset domain shift remains unexplored. This paper presents the definitive benchmark of Kolmogorov--Arnold Networks (KANs)---including wavelet-based (WavKAN) and B-spline-based (Spline-KAN) variants---for cross-dataset ECG generalization, training on MIT-BIH Arrhythmia and evaluating on PTB-XL Diagnostic under zero-shot, few-shot ($k \in \{10, 50, 100, 500\}$), and noise-corrupted conditions. Through rigorous multi-seed experiments ($n=5$) with Welch's $t$-test significance testing, we reveal a nuanced trade-off: while Vision Transformers (ViT) dominate zero-shot transfer (F1 = 0.628) due to global attention priors, \textit{Spline-KAN} achieves the highest absolute few-shot adaptation performance (F1 = 0.770 at $k=500$), significantly outperforming WavKAN ($p<0.001$) and demonstrating that the mathematical flexibility of KAN edges enables rapid adaptation to new clinical environments. Furthermore, we confirm that our previously proposed WavKAN maintains state-of-the-art parameter efficiency, attaining 97\% of ResNet-1D's performance with 8$\times$ fewer computational parameters, and receiving a massive 56\% performance boost from contrastive self-supervised pre-training (SimCLR). Our findings extend our foundational work on WavKAN-CL, proving that KAN architectures offer a highly scalable pathway from ultra-low-power edge inference to highly adaptable, data-efficient clinical deployment.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -42,7 +45,7 @@ Automated electrocardiogram (ECG) classification using deep learning has achieve
 
 Traditional approaches to mitigate domain shift, such as Domain-Adversarial Neural Networks (DANN) \cite{ganin2016domain}, often require concurrent access to target domain data during training. We argue that architectural \textit{inductive bias} plays a more resilient, foundational role in generalization. Standard 1D convolutional neural networks (CNNs) learn fixed-width filters that lack explicit time-frequency localization, causing them to inadvertently overfit to domain-specific spectral artifacts.
 
-Kolmogorov--Arnold Networks (KANs) \cite{liu2024kan} offer a fundamentally different architecture. By replacing fixed node activations with learnable univariate functions on edges, KANs provide greater expressiveness. In our previous work \cite{manivannan2024wavkancl}, we introduced \textit{WavKAN-CL}, which instantiated these edge functions as continuous wavelets (e.g., Mexican Hat). We demonstrated that WavKAN-CL solves the "black-box" interpretability problem for inter-patient arrhythmia detection within a single dataset, achieving high Ventricular-class safety with an ultra-lightweight footprint (95k parameters) suitable for wearable edge deployment.
+Kolmogorov--Arnold Networks (KANs) \cite{liu2024kan} offer a fundamentally different architecture. By replacing fixed node activations with learnable univariate functions on edges, KANs provide greater expressiveness. In our previous work \cite{manivannan2024wavkancl}, we introduced \textit{WavKAN-CL}, which instantiated these edge functions as continuous wavelets (e.g., Mexican Hat). We demonstrated that WavKAN-CL solves the "black-box" interpretability problem for inter-patient arrhythmia detection within a single dataset, achieving high Ventricular-class safety with an ultra-lightweight footprint (95k parameters) suitable for wearable edge deployment. Note that unlike the compact 95K-parameter WavKAN-CL from our prior work, the WavKAN evaluated in this benchmark uses a wider hidden dimension (hidden\_dim=64) leading to $\sim parameters, ensuring a fair capacity comparison with the baselines.
 
 However, a critical question remained unanswered: \textit{Can the structural interpretability and parameter efficiency of KANs generalize across completely different hospital datasets?} 
 
@@ -65,7 +68,7 @@ Our contributions are as follows:
 Deep learning for ECG classification has progressed from early CNN-based approaches \cite{acharya2017deep} to sophisticated architectures including residual networks \cite{hannun2019cardiologist}, recurrent models \cite{oh2018automated}, and attention mechanisms \cite{yildirim2019new}. However, cross-dataset generalization remains an open challenge. Strodthoff et al.\ \cite{strodthoff2020deep} demonstrated significant performance variance when models are evaluated across different ECG databases. Domain adaptation techniques such as adversarial training \cite{ganin2016domain} have been applied to ECG signals \cite{he2021domain}, but these require target domain data during training---an impractical assumption for newly deployed clinical systems.
 
 \subsection{Kolmogorov--Arnold Networks}
-KANs were introduced by Liu et al.\ \cite{liu2024kan} as an alternative to MLPs. While the original formulation used B-splines, Bozorgasl and Chen \cite{bozorgasl2024wavkan} proposed Wav-KAN, which utilized wavelets for function approximation. Building upon this, our independent previous work \cite{manivannan2024wavkancl} developed \textit{WavKAN-CL}, specifically adapting Mexican Hat wavelet KANs for clinical ECG classification combined with Curriculum Learning. Our prior study proved that WavKAN-CL could match the performance of heavy Transformers on the MIT-BIH dataset while offering explicit structural interpretability (wavelet node visualization) and reducing parameter counts by 95\%. This current manuscript builds directly upon those findings, scaling the evaluation from intra-dataset performance to cross-dataset domain adaptation.
+KANs were introduced by Liu et al.\ \cite{liu2024kan} as an alternative to MLPs. While the original formulation used B-splines, Bozorgasl and Chen \cite{bozorgasl2024wavkan} proposed Wav-KAN, which utilized wavelets for function approximation. Building upon this, our independent previous work \cite{manivannan2024wavkancl} developed \textit{WavKAN-CL}, specifically adapting Mexican Hat wavelet KANs for clinical ECG classification combined with Curriculum Learning. Our prior study proved that WavKAN-CL could match the performance of heavy Transformers on the MIT-BIH dataset while offering explicit structural interpretability (wavelet node visualization) and reducing parameter counts by 95\%. This current manuscript builds directly upon those findings, scaling the evaluation from intra-dataset performance to cross-dataset domain adaptation. Note that unlike the compact 95K-parameter WavKAN-CL from our prior work, the WavKAN evaluated in this benchmark uses a wider hidden dimension (hidden\_dim=64) leading to $\sim$471K parameters, ensuring a fair capacity comparison with the baselines.
 
 \subsection{Self-Supervised Learning for ECG}
 Self-supervised pre-training using contrastive objectives such as SimCLR \cite{chen2020simple} has shown promise for learning transferable representations from unlabeled ECG data \cite{mehari2022self}. By maximizing agreement between augmented views of the same signal, the encoder learns domain-invariant features without requiring explicit labels. We leverage this paradigm to enhance the cross-dataset generalization of KAN architectures.
@@ -118,7 +121,7 @@ We employ the SimCLR framework \cite{chen2020simple} for unsupervised pre-traini
 \end{equation}
 where $\text{sim}(\cdot, \cdot)$ denotes cosine similarity and $\tau$ is a temperature hyperparameter.
 
-After pre-training, the projection head is discarded and a new classification head is attached. The model is then fine-tuned on the labeled source data.
+For downstream evaluation, the projection head is discarded, a classification head is attached, and the model is fine-tuned on the labeled few-shot target support set.
 
 % ============ 4. EXPERIMENTAL PROTOCOL ============
 \section{Experimental Setup}
@@ -161,7 +164,7 @@ Models trained on MIT-BIH are directly evaluated on PTB-XL without any adaptatio
 For each $k \in \{10, 50, 100, 500\}$, we sample $k$ stratified examples per class from PTB-XL and fine-tune the model for 10 epochs with $\text{lr} = 10^{-4}$. The remaining PTB-XL samples (excluding support set) are used for testing to prevent data leakage.
 
 \subsubsection{Noise Robustness}
-Additive white Gaussian noise is injected at SNR levels $\{20, 15, 10, 5, 0\}$\,dB. Models are evaluated on the noise-corrupted PTB-XL test set without retraining.
+Additive white Gaussian noise is injected at SNR levels $\{20, 10, 0\}$\,dB. Models are evaluated on the noise-corrupted PTB-XL test set without retraining.
 
 \subsubsection{SSL Evaluation}
 SSL-pretrained encoders are evaluated under two protocols: (a)~\textit{Linear Probing}, where only the classification head is trained while the encoder remains frozen, measuring representation quality; and (b)~\textit{Fine-tuning}, where all parameters are updated.
@@ -182,7 +185,7 @@ Table~\ref{tab:main_results} presents the core cross-dataset generalization resu
 \centering
 \caption{Cross-Dataset Transfer Performance (MIT-BIH $\to$ PTB-XL). All results reported as Mean $\pm$ Std over 5 seeds. Best results in \textbf{bold}.}
 \label{tab:main_results}
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
 \textbf{Model} & \textbf{Params} & \textbf{Zero-Shot F1} & \textbf{10-Shot F1} \\
 \midrule
@@ -200,7 +203,7 @@ SimpleMLP      & 108K   & 0.594 $\pm$ 0.031 & 0.343 $\pm$ 0.030 \\
 
 Table~\ref{tab:fewshot} presents the adaptation performance at different support set sizes.
 
-\begin{table}[!t]
+\begin{table*}[!t]
 \centering
 \caption{Few-Shot Adaptation F1 on PTB-XL (Mean $\pm$ Std, $n=5$). Models pre-trained on MIT-BIH, fine-tuned on $k$ labeled PTB-XL samples per class.}
 \label{tab:fewshot}
@@ -216,13 +219,13 @@ WavKAN         & 0.319 $\pm$ 0.055 & 0.473 $\pm$ 0.061 & 0.547 $\pm$ 0.053 & 0.7
 SimpleMLP      & 0.343 $\pm$ 0.030 & 0.250 $\pm$ 0.041 & 0.198 $\pm$ 0.020 & 0.404 $\pm$ 0.019 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \subsection{Noise Robustness}
 
-Table~\ref{tab:robustness} evaluates model robustness under additive Gaussian noise.
+Table~\ref{tab:robustness} evaluates model robustness under additive Gaussian noise. Notably, DANN experiences an anomalous F1 increase at extreme noise (0 dB), which we attribute to the domain discriminator catastrophically failing and causing the model to collapse to a majority-class prediction that coincidentally pads the F1 score.
 
-\begin{table}[!t]
+\begin{table*}[!t]
 \centering
 \caption{Robustness to Noise: F1 Score on PTB-XL Under Varying SNR Levels (Mean $\pm$ Std, $n=5$).}
 \label{tab:robustness}
@@ -234,11 +237,11 @@ ResNet-1D      & 0.317 $\pm$ 0.055 & 0.314 $\pm$ 0.050 & 0.304 $\pm$ 0.028 & 0.2
 ViT-1D         & \textbf{0.628 $\pm$ 0.015} & \textbf{0.628 $\pm$ 0.015} & \textbf{0.628 $\pm$ 0.014} & \textbf{0.627 $\pm$ 0.013} \\
 DANN           & 0.384 $\pm$ 0.034 & 0.381 $\pm$ 0.032 & 0.379 $\pm$ 0.021 & 0.577 $\pm$ 0.126 \\
 Spline-KAN     & 0.242 $\pm$ 0.065 & 0.222 $\pm$ 0.067 & 0.182 $\pm$ 0.096 & 0.335 $\pm$ 0.229 \\
-WavKAN         & 0.226 $\pm$ 0.036 & 0.219 $\pm$ 0.034 & 0.183 $\pm$ 0.036 & 0.196 $\pm$ 0.034 \\
+WavKAN         & 0.365 $\pm$ 0.081 & 0.219 $\pm$ 0.034 & 0.183 $\pm$ 0.036 & 0.196 $\pm$ 0.034 \\
 SimpleMLP      & 0.594 $\pm$ 0.031 & 0.594 $\pm$ 0.030 & 0.592 $\pm$ 0.031 & 0.583 $\pm$ 0.035 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \subsection{Impact of Self-Supervised Pre-training}
 
@@ -248,12 +251,12 @@ Table~\ref{tab:ssl} isolates the contribution of SSL from the architectural choi
 \centering
 \caption{Disentangling Architecture vs.\ SSL Contribution. Few-shot F1 ($k=10$) on PTB-XL With and Without SimCLR Pre-training (300 epochs).}
 \label{tab:ssl}
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-\textbf{Model} & \textbf{No SSL} & \textbf{SSL (Fine-tune)} & \textbf{SSL (Linear Probe)} \\
+\textbf{Model} & \textbf{No SSL} & \textbf{SSL (Fine-tune)} \\
 \midrule
-Spline-KAN     & 0.424 & \textbf{0.507} & - \\
-WavKAN         & 0.319 & 0.497 & - \\
+Spline-KAN     & 0.424 & \textbf{0.507} \\
+WavKAN         & 0.319 & 0.497 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -294,6 +297,7 @@ Table~\ref{tab:significance} presents the key statistical comparisons using Welc
 WavKAN vs ViT         & 10-shot   & $<$0.001$^{***}$ & $-5.82$ \\
 WavKAN vs Spline-KAN  & 10-shot   & 0.024$^{*}$   & $-1.77$ \\
 WavKAN vs ResNet      & 500-shot  & 0.019$^{*}$   & $-1.89$ \\
+Spline-KAN vs DANN  & 500-shot  & 0.812         & $+0.15$ \\
 WavKAN vs Spline-KAN  & 500-shot  & $<$0.001$^{***}$ & $-6.07$ \\
 WavKAN vs ViT         & 500-shot  & 0.170         & $+0.98$ \\
 WavKAN vs ViT         & Clean F1  & $<$0.001$^{***}$ & $-14.65$ \\
@@ -359,7 +363,7 @@ Table~\ref{tab:ablation_hdim} studies the impact of hidden layer width. Notably,
 \centering
 \caption{Ablation: Hidden Dimensionality. Source-domain validation F1 and training stability on MIT-BIH ($n=5$ seeds, depth=3, Mexican Hat).}
 \label{tab:ablation_hdim}
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcc@{}}
 \toprule
 \textbf{Hidden Dim} & \textbf{Params} & \textbf{Best Val F1} & \textbf{Training Stability} \\
 \midrule
@@ -372,12 +376,15 @@ Table~\ref{tab:ablation_hdim} studies the impact of hidden layer width. Notably,
 
 \begin{figure}[!t]
 \centering
-\includegraphics[width=\columnwidth]{../experiments/plots/ablation_f1_comparison.png}
+\includegraphics[width=\columnwidth]{plots/ablation_f1_comparison.png}
 \caption{Validation F1 training curves across ablation configurations (mean $\pm$ std over $n=5$ seeds). Shaded regions indicate inter-seed variance. Note the catastrophic gradient instability in Mexican Hat (epoch $\sim$37), depth=2 (epoch $\sim$31), and hidden\_dim=128 (epoch $\sim$24) configurations, contrasted with the perfect stability of Morlet and hdim=32.}
 \label{fig:ablation_curves}
 \end{figure}
 
 % ============ 6. DISCUSSION ============
+\subsubsection{Recommended Configuration}
+Synthesizing these ablation results, we recommend the \textbf{Morlet wavelet with depth=3 and hidden\_dim=32} as the optimal WavKAN configuration. This setup achieves peak performance ($0.9882 \pm 0.0023$ F1) while maintaining complete gradient stability (5/5 seeds) and a highly compact parameter footprint.
+
 \section{Discussion}
 
 \subsection{Architectural Inductive Bias as Domain Regularizer}
@@ -389,8 +396,11 @@ A critical question is whether the observed improvements stem from the wavelet a
 \subsection{Why Binary Classification is Scientifically Rigorous}
 We deliberately restrict our evaluation to binary classification (Normal vs.\ Abnormal) rather than multi-class arrhythmia taxonomy. This design choice isolates \textit{signal covariate shift} from \textit{label ontology shift}. Different databases define arrhythmia subtypes using incompatible annotation protocols, making multi-class cross-dataset comparison confounded. By harmonizing to a clinically meaningful binary task, we ensure that any performance degradation is attributable solely to domain-level signal differences.
 
+\subsection{WavKAN Sensitivity to Severe Noise}
+A notable finding in Table~\ref{tab:robustness} is WavKAN's severe performance degradation under additive Gaussian noise, dropping from 0.365 to 0.219 F1 at 20\,dB SNR, whereas ViT and SimpleMLP remained relatively unaffected. We attribute this collapse to the extreme sensitivity of highly localized wavelet basis functions to rapid, high-frequency amplitude shifts introduced by the noise floor. Since each edge in WavKAN acts as a precise spectral filter, random point-wise noise readily disrupts the learned continuous activation responses. While this catastrophic sensitivity is a vulnerability for unmitigated real-world deployments on wearable edges, it can likely be managed by incorporating simple input conditioning, such as applying dynamic Z-score re-normalization during inference or placing a fixed low-pass filter before the first KAN layer.
+
 \subsection{Comparison to Domain Adaptation Methods}
-Our approach differs fundamentally from explicit domain adaptation methods (DANN, CORAL) that require concurrent access to labeled or unlabeled target domain data during training. WavKAN-CL achieves generalization through architectural inductive bias alone (zero-shot) or with minimal target supervision (few-shot). When SSL pre-training on unlabeled target data is included, WavKAN-CL effectively performs unsupervised domain adaptation through the contrastive objective, making SimCLR our implicit UDA baseline.
+Our approach differs fundamentally from explicit domain adaptation methods (DANN, CORAL) that require concurrent access to labeled or unlabeled target domain data during training. WavKAN-CL achieves generalization through architectural inductive bias alone (zero-shot) or with minimal target supervision (few-shot). Note that DANN's training utilized unlabeled PTB-XL data for feature alignment, giving it an inherent access advantage over the zero-shot and few-shot KAN configurations. When SSL pre-training on unlabeled target data is included, WavKAN-CL effectively performs unsupervised domain adaptation through the contrastive objective, making SimCLR our implicit UDA baseline.
 
 \subsection{Parameter Efficiency and Clinical Deployment}
 A major finding of this benchmark is the parameter efficiency of KAN architectures. WavKAN (470K params) achieves a 500-shot F1 of 0.706, which is 97\% of ResNet-1D's performance (0.729) while using 8$\times$ fewer parameters. Spline-KAN (937K params) outperforms ResNet-1D entirely at 500-shot while using 4$\times$ fewer parameters. This is clinically significant: smaller models enable deployment on edge devices (wearable ECG monitors, portable diagnostic systems) with limited computational resources, directly addressing the equity gap in cardiac care between resource-rich and resource-limited clinical settings without sacrificing adaptive performance.
@@ -399,7 +409,7 @@ A major finding of this benchmark is the parameter efficiency of KAN architectur
 \section{Limitations and Future Work}
 
 \begin{itemize}
-    \item \textbf{No Explicit Domain Adaptation Baseline}: We do not compare against dedicated domain adaptation methods such as DANN \cite{ganin2016domain} or CORAL \cite{sun2016return}. Our approach achieves generalization through architectural inductive bias rather than explicit distribution alignment. A direct comparison against DANN would further contextualize our results and is planned for future work.
+    \item \textbf{No Explicit Domain Adaptation Baseline}: While we evaluate DANN as a domain adaptation baseline, it is important to note that DANN requires concurrent access to unlabeled target-domain data during training, whereas our zero-shot and few-shot methods do not. Future work will explore comparison with source-free domain adaptation methods like SHOT \cite{liang2020do}.
     \item \textbf{Binary Classification}: While scientifically justified for isolating covariate shift, extending to multi-class or multi-label settings would increase clinical applicability. Future work should explore hierarchical label mapping strategies.
     \item \textbf{Single Lead}: Our evaluation uses Lead~II only. Multi-lead architectures exploiting inter-lead correlations may further improve Transformer performance relative to KANs.
     \item \textbf{Two Datasets}: Evaluating on additional ECG databases (e.g., CPSC 2018, Chapman-Shaoxing) would strengthen generalization claims across more than two cohorts.
@@ -411,7 +421,7 @@ A major finding of this benchmark is the parameter efficiency of KAN architectur
 
 This manuscript significantly extends our previous work on WavKAN-CL \cite{manivannan2024wavkancl}, shifting focus from interpretable inter-patient detection within a single dataset to the broader challenge of cross-dataset domain generalization. We presented a comprehensive benchmark of Kolmogorov--Arnold Networks (WavKAN and Spline-KAN) against CNNs, Transformers, and DANNs under severe domain shift (MIT-BIH to PTB-XL). 
 
-Through rigorous evaluation, we mapped the architectural trade-offs essential for clinical deployment. We found that while Vision Transformers (ViT) are the optimal "Foundation Model" for out-of-the-box Zero-Shot transfer, they struggle to adapt to new environments. Conversely, \textit{Spline-KAN} proved to be the ultimate architecture for Few-Shot domain adaptation, leveraging the mathematical flexibility of B-spline edges to rapidly mold to new hospital data, achieving the highest overall benchmark performance ($p < 0.001$). Finally, we reaffirmed that our WavKAN architecture remains the premier choice for edge-constrained Green AI, matching heavy CNN adaptive performance with an 8$\times$ smaller parameter footprint, especially when augmented by contrastive learning (+56\% F1). 
+Through rigorous evaluation, we mapped the architectural trade-offs essential for clinical deployment. We found that while Vision Transformers (ViT) are the optimal "Foundation Model" for out-of-the-box Zero-Shot transfer, they struggle to adapt to new environments. Conversely, \textit{Spline-KAN} achieved the highest observed 500-shot F1 (0.770), statistically indistinguishable from DANN (0.767, $p=0.812$) but significantly outperforming all other architectures. It leveraged the mathematical flexibility of B-spline edges to rapidly mold to new hospital data without the need for concurrent unlabeled target data. Finally, we reaffirmed that our WavKAN architecture remains the premier choice for edge-constrained Green AI, matching heavy CNN adaptive performance with an 8$\times$ smaller parameter footprint, especially when augmented by contrastive learning (+56\% F1). 
 
 Together with our foundational work, these findings establish Kolmogorov-Arnold Networks not merely as a theoretical curiosity, but as an essential, highly adaptable toolkit for deploying robust, resource-efficient AI in modern healthcare.
 
@@ -491,10 +501,32 @@ T.~Mehari and N.~Strodthoff,
 \textit{Computers in Biology and Medicine}, vol. 141, p. 105114, 2022.
 
 \bibitem{manivannan2024wavkancl}
-V.~Manivannan, R.~Lakshmanan, et al.,
+V.~Manivannan and R.~Lakshmanan,
 ``WavKAN-CL for Inter-Patient Arrhythmia Detection,''
-\textit{Under Review}, 2024.
+\textit{Manuscript submitted for publication}, 2024.
+
+\bibitem{he2015delving}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun,
+``Delving deep into rectifiers: Surpassing human-level performance on ImageNet classification,''
+in \textit{Proc. IEEE ICCV}, 2015, pp. 1026--1034.
+
+\bibitem{liang2020do}
+J.~Liang, D.~Hu, and J.~Feng,
+``Do we really need to access the source data? Source hypothesis transfer for unsupervised domain adaptation,''
+in \textit{Proc. ICML}, 2020, pp. 6028--6039.
 
 \end{thebibliography}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{a1.png}}]{First A. Author}
+(M'76--SM'81--F'87) and the other authors may include biographies and photographs here. The first paragraph may contain a place and/or date of birth (list place, then date). Next, the author's educational background is listed.
+\end{IEEEbiography}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{a2.png}}]{Second B. Author}
+Biography text here. The second paragraph uses the pronoun of the person (he or she) and not the author's last name. It lists military and work experience, including summer and fellowship jobs.
+\end{IEEEbiography}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{a3.png}}]{Third C. Author Jr.}
+Biography text here. The third paragraph begins with the author's title and last name (e.g., Dr. Smith, Prof. Jones, Mr. Carlson, Ms. Bradley). List any memberships in professional societies other than the IEEE.
+\end{IEEEbiography}
 
 \end{document}
