@@ -80,11 +80,12 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
         return
     
     embedding_path = save_path.replace('.png', '.npy')
+    # Always recompute if we want the new perplexity, but assuming we delete the old files.
     if os.path.exists(embedding_path):
         embeddings = np.load(embedding_path)
     else:
         print(f"  Running t-SNE for {model_name} ({features.shape[0]} samples)...")
-        tsne = TSNE(n_components=2, random_state=42, perplexity=30, max_iter=1000)
+        tsne = TSNE(n_components=2, random_state=42, perplexity=50, max_iter=2000)
         embeddings = tsne.fit_transform(features)
         np.save(embedding_path, embeddings)
         
@@ -105,11 +106,20 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
         mask = labels == cls_idx
         ax.scatter(embeddings[mask, 0], embeddings[mask, 1], 
                    c=colors[cls_idx], label=class_names[cls_idx],
-                   alpha=0.6, s=15)
+                   alpha=0.5, s=8)
     ax.set_title(f'Colored by Class')
     ax.legend(fontsize=10)
     ax.set_xlabel('t-SNE 1')
     ax.set_ylabel('t-SNE 2')
+    
+    # Add silhouette score box
+    ax.text(0.05, 0.95, f'Sil={score:.3f}', transform=ax.transAxes,
+            fontsize=12, fontweight='bold', verticalalignment='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+    # Record limits to share with the domain plot
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
     
     # Plot 2: Colored by dataset (Source vs Target)
     ax = axes[1]
@@ -119,11 +129,13 @@ def plot_tsne_single(features, labels, dataset_labels, model_name, save_path):
         mask = dataset_labels == ds_idx
         ax.scatter(embeddings[mask, 0], embeddings[mask, 1],
                    c=ds_colors[ds_idx], label=ds_names[ds_idx],
-                   alpha=0.6, s=15)
+                   alpha=0.5, s=8)
     ax.set_title(f'Colored by Domain')
     ax.legend(fontsize=10)
     ax.set_xlabel('t-SNE 1')
     ax.set_ylabel('t-SNE 2')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=200, bbox_inches='tight')
@@ -180,7 +192,7 @@ def main():
     mit_loader = DataLoader(mit_subset, batch_size=256, shuffle=False)
     ptb_loader = DataLoader(ptb_subset, batch_size=256, shuffle=False)
     
-    models = ['wavkan', 'spline_kan', 'resnet', 'vit', 'dann']
+    models = ['wavkan', 'spline_kan', 'resnet', 'vit', 'dann', 'mlp']
     
     for model_name in models:
         print(f"\nProcessing {model_name}...")
@@ -219,7 +231,8 @@ def main():
         'spline_kan': 'Spline-KAN',
         'resnet': 'ResNet-1D',
         'vit': 'ViT-1D',
-        'dann': 'DANN (Domain Adversarial)'
+        'dann': 'DANN (Domain Adversarial)',
+        'mlp': 'SimpleMLP'
     }
     
     fig, axes = plt.subplots(3, 2, figsize=(24, 15))
@@ -238,12 +251,9 @@ def main():
         if os.path.exists(img_path):
             img = plt.imread(img_path)
             axes[idx].imshow(img)
-            name_str = pretty_names.get(model_name, model_name) + score_text
+            name_str = pretty_names.get(model_name, model_name)
             axes[idx].set_title(name_str, fontsize=18, fontweight='bold', pad=10)
         axes[idx].axis('off')
-        
-    # Hide the 6th empty subplot
-    axes[5].axis('off')
     
     plt.suptitle('Latent Space Comparison Across Architectures', fontsize=24, fontweight='bold', y=0.98)
     plt.tight_layout()

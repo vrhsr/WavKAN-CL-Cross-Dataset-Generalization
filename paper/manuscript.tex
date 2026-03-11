@@ -221,6 +221,13 @@ SimpleMLP      & 0.343 $\pm$ 0.030 & 0.250 $\pm$ 0.041 & 0.198 $\pm$ 0.020 & 0.4
 \end{tabular}
 \end{table*}
 
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{plots/fewshot_curves.png}
+\caption{Few-Shot Adaptation Trajectories illustrating the rapid adaptation of Spline-KAN compared to domain-adversarial and transformer baselines.}
+\label{fig:fewshot_curve}
+\end{figure*}
+
 \subsection{Noise Robustness}
 
 Table~\ref{tab:robustness} evaluates model robustness under additive Gaussian noise. Notably, DANN experiences an anomalous F1 increase at extreme noise (0 dB), which we attribute to the domain discriminator catastrophically failing and causing the model to collapse to a majority-class prediction that coincidentally pads the F1 score.
@@ -315,9 +322,19 @@ The visualizations confirm that while zero-shot performance varies, the models f
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=\textwidth]{plots/tsne_comparison.png}
-\caption{t-SNE visualization of the learned latent spaces for WavKAN, Spline-KAN, ResNet-1D, and ViT-1D. The comparative analysis illustrates the separation of semantic classes (Normal vs. Abnormal) and the degree of domain alignment between the MIT-BIH (Source) and PTB-XL (Target) distributions prior to any few-shot adaptation.}
+\caption{t-SNE visualization of the learned latent spaces. ViT-1D (middle right) shows near-perfect domain alignment---source and target points occupy identical manifolds---directly explaining its zero-shot dominance. WavKAN (top left) shows clear domain separation in latent space, explaining its zero-shot weakness despite strong source-domain learning. Spline-KAN (top right) demonstrates excellent class separation along interleaved manifolds, enabling rapid few-shot adaptation. Notably, DANN's domain plot (bottom left) reveals incomplete alignment despite adversarial training, suggesting gradient reversal alone is insufficient for this cross-dataset shift.}
 \label{fig:tsne}
 \end{figure*}
+
+\subsection{Error Analysis and Clinical Relevance}
+To understand the systematic failure modes during Zero-Shot transfer, we present confusion matrices for WavKAN and ViT-1D in Figure~\ref{fig:confusion}. WavKAN exhibits a pronounced bias toward predicting the majority class (Normal) under severe domain shift, acting as a highly specific but poorly sensitive classifier out-of-the-box. The ViT avoids this systematic collapse, managing to identify true abnormalities much more successfully, underscoring the resilience of its global self-attention mechanism to morphological variations between hospitals.
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=\columnwidth]{plots/confusion_matrices.png}
+\caption{Zero-Shot Confusion Matrices mapping predictions on PTB-XL (Target Domain). Percentages reflect normalized true class rates. WavKAN systematically fails by predicting the majority class (Normal), while ViT maintains balanced sensitivity.}
+\label{fig:confusion}
+\end{figure}
 
 \subsection{Ablation Studies}
 
