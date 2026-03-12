@@ -4,16 +4,19 @@ import torch.nn.functional as F
 import math
 
 class WaveletLinear(nn.Module):
-    def __init__(self, in_features, out_features, wavelet_type='mexican_hat'):
+    def __init__(self, in_features, out_features, wavelet_type='mexican_hat', init_mode='random'):
         super(WaveletLinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.wavelet_type = wavelet_type
+        self.init_mode = init_mode
+        self.a_min = 0.001  # Minimum scale floor to prevent collapse
         
         # Learnable parameters for scaling and translation of wavelets
         # Shape: (out_features, in_features)
         self.translation = nn.Parameter(torch.zeros(out_features, in_features))
-        self.scale = nn.Parameter(torch.ones(out_features, in_features))
+        # Use scale_raw to enforce positivity/stability via softplus in forward
+        self.scale_raw = nn.Parameter(torch.Tensor(out_features, in_features))
         self.weights = nn.Parameter(torch.Tensor(out_features, in_features))
 
         self.reset_parameters()
@@ -21,15 +24,43 @@ class WaveletLinear(nn.Module):
     def reset_parameters(self):
         nn.init.kaiming_uniform_(self.weights, a=math.sqrt(5))
         nn.init.uniform_(self.translation, -1, 1)
-        nn.init.uniform_(self.scale, 0.1, 1)
+        
+        if self.init_mode == 'clinical':
+            # Initialize scales to capture specific clinical frequency bands
+            # Based on 100Hz sampling:
+            # QRS (~25Hz) -> scale ~0.006
+            # T-wave (~5Hz) -> scale ~0.032
+            # P-wave (~2Hz) -> scale ~0.080
+            scales = torch.zeros_like(self.scale_raw)
+            n_in = self.in_features
+            # Split input features into three clinical bands
+            qrs_split = n_in // 3
+            twave_split = 2 * n_in // 3
+            
+            # Helper to invert softplus: x = log(exp(y - a_min) - 1)
+            def inv_softplus(y):
+                diff = y - self.a_min
+                return math.log(math.exp(max(diff, 1e-6)) - 1)
+            
+            scales[:, :qrs_split] = inv_softplus(0.006)
+            scales[:, qrs_split:twave_split] = inv_softplus(0.032)
+            scales[:, twave_split:] = inv_softplus(0.080)
+            self.scale_raw.data.copy_(scales)
+        else:
+            # Default random initialization (log-space uniform approx)
+            # Starting scales between 0.1 and 1.0
+            nn.init.uniform_(self.scale_raw, -2.0, 0.0)
 
     def forward(self, x):
         # x shape: (batch_size, in_features)
         # Expand x to match output dimensions: (batch, out, in)
         x_expanded = x.unsqueeze(1).expand(-1, self.out_features, -1)
         
+        # Apply softplus to ensure scale > a_min
+        scale = self.a_min + F.softplus(self.scale_raw)
+        
         # Apply wavelet transform: psi((x - b) / a)
-        s = (x_expanded - self.translation) / (self.scale + 1e-8)
+        s = (x_expanded - self.translation) / (scale + 1e-8)
         
         if self.wavelet_type == 'mexican_hat':
             # Mexican Hat: (1 - t^2) * exp(-t^2 / 2)

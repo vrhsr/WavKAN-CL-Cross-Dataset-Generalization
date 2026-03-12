@@ -3,6 +3,7 @@ t-SNE / UMAP Visualization of Latent Representations.
 Shows whether WavKAN learns domain-invariant features vs baselines.
 """
 import torch
+import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
@@ -44,6 +45,8 @@ def extract_features(model, loader, device, model_name, max_samples=2000):
         handle = model.mlp_head.register_forward_hook(get_hook('features'))
     elif hasattr(model, 'label_classifier'):
         handle = model.label_classifier.register_forward_hook(get_hook('features'))
+    elif hasattr(model, 'net') and isinstance(model.net, nn.Sequential):
+        handle = model.net[-1].register_forward_hook(get_hook('features'))
     else:
         print(f"Cannot find classifier layer for {model_name}")
         return None, None
@@ -201,12 +204,15 @@ def main():
             continue
         
         # Extract features from both domains
-        mit_features, mit_labels = extract_features(model, mit_loader, DEVICE, model_name, max_samples=n_per_domain)
-        ptb_features, ptb_labels = extract_features(model, ptb_loader, DEVICE, model_name, max_samples=n_per_domain)
+        res_mit = extract_features(model, mit_loader, DEVICE, model_name, max_samples=n_per_domain)
+        res_ptb = extract_features(model, ptb_loader, DEVICE, model_name, max_samples=n_per_domain)
         
-        if mit_features is None or ptb_features is None:
+        if res_mit[0] is None or res_ptb[0] is None:
             print(f"  Skipping {model_name} — could not extract features")
             continue
+            
+        mit_features, mit_labels = res_mit
+        ptb_features, ptb_labels = res_ptb
         
         # Combine
         all_features = np.concatenate([mit_features, ptb_features], axis=0)
@@ -235,32 +241,45 @@ def main():
         'mlp': 'SimpleMLP'
     }
     
-    fig, axes = plt.subplots(3, 2, figsize=(24, 15))
-    axes = axes.flatten()
+    # Figure 1: Main Architectures (2x2 grid)
+    main_models = ['wavkan', 'spline_kan', 'resnet', 'vit']
+    fig_main, axes_main = plt.subplots(2, 2, figsize=(20, 10))
+    axes_main = axes_main.flatten()
     
-    for idx, model_name in enumerate(models):
+    for idx, model_name in enumerate(main_models):
         img_path = os.path.join(OUTPUT_DIR, f'tsne_{model_name}.png')
-        score_path = os.path.join(OUTPUT_DIR, f'tsne_{model_name}.txt')
-        
-        score_text = ""
-        if os.path.exists(score_path):
-            with open(score_path, 'r') as f:
-                score = float(f.read().strip())
-                score_text = f" (Silhouette: {score:.3f})"
-                
         if os.path.exists(img_path):
             img = plt.imread(img_path)
-            axes[idx].imshow(img)
+            axes_main[idx].imshow(img)
             name_str = pretty_names.get(model_name, model_name)
-            axes[idx].set_title(name_str, fontsize=18, fontweight='bold', pad=10)
-        axes[idx].axis('off')
-    
-    plt.suptitle('Latent Space Comparison Across Architectures', fontsize=24, fontweight='bold', y=0.98)
+            axes_main[idx].set_title(name_str, fontsize=18, fontweight='bold', pad=10)
+        axes_main[idx].axis('off')
+        
+    plt.suptitle('Latent Space Comparison: Primary Architectures', fontsize=24, fontweight='bold', y=0.98)
     plt.tight_layout()
-    plt.subplots_adjust(wspace=0.02, hspace=0.2, top=0.93)
-    plt.savefig(os.path.join(OUTPUT_DIR, 'tsne_comparison.png'), dpi=200, bbox_inches='tight', pad_inches=0.1)
+    plt.savefig(os.path.join(OUTPUT_DIR, 'tsne_main.png'), dpi=300, bbox_inches='tight')
     plt.close()
-    print("Done. All t-SNE plots saved to paper/plots/")
+    
+    # Figure 2: Baselines (1x2 grid)
+    print("\nGenerating baseline comparison grid...")
+    baseline_models = ['dann', 'mlp']
+    fig_base, axes_base = plt.subplots(1, 2, figsize=(20, 5))
+    
+    for idx, model_name in enumerate(baseline_models):
+        img_path = os.path.join(OUTPUT_DIR, f'tsne_{model_name}.png')
+        if os.path.exists(img_path):
+            img = plt.imread(img_path)
+            axes_base[idx].imshow(img)
+            name_str = pretty_names.get(model_name, model_name)
+            axes_base[idx].set_title(name_str, fontsize=18, fontweight='bold', pad=10)
+        axes_base[idx].axis('off')
+        
+    plt.suptitle('Domain Alignment and Baseline Analysis', fontsize=24, fontweight='bold', y=0.98)
+    plt.tight_layout()
+    plt.savefig(os.path.join(OUTPUT_DIR, 'tsne_dann_mlp.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Done. All t-SNE plot grids saved to {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
