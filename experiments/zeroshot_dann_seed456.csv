@@ -1,0 +1,2 @@
+model,seed,zero_shot_acc,zero_shot_f1,zero_shot_auc
+dann,456,0.5326,0.3544,0.5746

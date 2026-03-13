@@ -42,7 +42,10 @@ def evaluate(model, loader, device):
     with torch.no_grad():
         for inputs, labels in loader:
             inputs = inputs.to(device).float()
-            outputs = model(inputs)
+            if isinstance(model, DANN):
+                outputs = model.predict(inputs)
+            else:
+                outputs = model(inputs)
             preds = torch.argmax(outputs, dim=1).cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.numpy())
@@ -56,7 +59,10 @@ def fine_tune(model, train_loader, epochs=10, lr=1e-4, device='cpu'):
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
             optimizer.zero_grad()
-            outputs = model(inputs)
+            if isinstance(model, DANN):
+                outputs = model.predict(inputs)
+            else:
+                outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -89,6 +95,8 @@ def main(args):
             model = SimpleMLP(input_dim=250, num_classes=2).to(device)
         elif args.model == 'spline_kan':
             model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
+        elif args.model == 'dann':
+            model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
         else:
             raise ValueError("Unknown model")
             

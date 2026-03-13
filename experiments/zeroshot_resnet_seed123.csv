@@ -1,0 +1,2 @@
+model,seed,zero_shot_acc,zero_shot_f1,zero_shot_auc
+resnet,123,0.0,0.2937230145978176,0.0

@@ -2,3 +2,4 @@
 from src.models.wavkan import WavKANClassifier
 from src.models.spline_kan import SplineKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
+from src.models.dann import DANN

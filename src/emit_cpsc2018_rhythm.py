@@ -27,7 +27,7 @@ def apply_bandpass(signal, fs, lowcut=0.5, highcut=40.0, order=4):
     nyq = 0.5 * fs
     low = lowcut / nyq
     high = highcut / nyq
-    b, a = butter(order, [low, high], btype='both')
+    b, a = butter(order, [low, high], btype='bandpass')
     return filtfilt(b, a, signal)
 
 def process_record(record_path, target_fs=TARGET_FS, target_len=TARGET_LENGTH):
@@ -77,18 +77,47 @@ def process_record(record_path, target_fs=TARGET_FS, target_len=TARGET_LENGTH):
     
     return segments
 
-def map_rhythm_label(label_code):
+import glob
+import re
+
+# SNOMED-CT Codes from CPSC 2018 challenge
+# Normal Sinus Rhythm
+NSR_CODE = '426783006'
+
+# Rhythm Abnormalities (AF, I-AVB, LBBB, RBBB, PAC, PVC)
+RHYTHM_ABNORM_CODES = {
+    '164889003', # AF
+    '270492004', # I-AVB
+    '164909002', # LBBB
+    '59118001',  # RBBB
+    '284470004', # PAC
+    '427172004', # PVC
+    '164884008', # VFB
+    '429622005'
+}
+
+def map_rhythm_label(record):
     """
-    1: Normal -> 0
-    2, 3, 4, 5, 6, 7: Rhythm Abnorm -> 1
-    8, 9: Morphological -> None (Exclude)
+    Parses the SNOMED-CT Dx code from record comments and maps it.
+    NSR -> 0
+    Rhythm Abnorm -> 1
+    Other (Morphological, etc) -> None (Exclude)
     """
-    if label_code == 1:
+    comments = record.comments
+    dx_codes = []
+    for c in comments:
+        if c.startswith('Dx:'):
+            codes = c.split('Dx:')[1].strip().split(',')
+            dx_codes.extend([code.strip() for code in codes])
+    
+    if NSR_CODE in dx_codes:
         return 0
-    elif 2 <= label_code <= 7:
-        return 1
-    else:
-        return None  # Exclude STD, STE
+    
+    for code in dx_codes:
+        if code in RHYTHM_ABNORM_CODES:
+            return 1
+            
+    return None
 
 def main():
     print("=" * 60)
@@ -98,9 +127,11 @@ def main():
     if not os.path.exists(DATA_DIR):
         print(f"Error: Raw data directory {DATA_DIR} not found.")
         return
-    
-    ref_path = os.path.join(DATA_DIR, "REFERENCE.csv")
-    ref_df = pd.read_csv(ref_path, header=None, names=['record', 'label'])
+        
+    print("\nDiscovering records...")
+    hea_files = glob.glob(os.path.join(DATA_DIR, "**/*.hea"), recursive=True)
+    record_paths = [f[:-4] for f in hea_files]
+    print(f"Found {len(record_paths)} records to process.")
     
     print("\nProcessing and Filtering (Rhythm-only)...")
     all_segments = []
@@ -109,24 +140,31 @@ def main():
     
     excluded_count = 0
     
-    for _, row in tqdm(ref_df.iterrows(), total=len(ref_df)):
-        record_name = row['record']
-        label = map_rhythm_label(row['label'])
+    for record_path in tqdm(record_paths):
+        try:
+            import wfdb
+            record = wfdb.rdrecord(record_path)
+        except Exception:
+            excluded_count += 1
+            continue
+            
+        label = map_rhythm_label(record)
         
         if label is None:
             excluded_count += 1
             continue
             
-        record_path = os.path.join(DATA_DIR, record_name)
         segments = process_record(record_path)
+        
+        record_name = os.path.basename(record_path)
+        pid = int(record_name[1:]) if record_name[0] == 'A' else 9999
         
         for seg in segments:
             all_segments.append(seg)
             all_labels.append(label)
-            pid = int(record_name[1:]) if record_name[0] == 'A' else 9999
             all_patients.append(pid)
     
-    print(f"\nExcluded {excluded_count} records (ST abnormalities).")
+    print(f"\nExcluded {excluded_count} records (ST/morphological abnormalities or parse errors).")
     
     if not all_segments:
         print("ERROR: No segments extracted.")

@@ -1,0 +1,12 @@
+model,checkpoint,mmd,sigma
+wavkan,wavkan_endpoint.pth,0.295306,9.9617
+wavkan,wavkan_seed42.pth,0.060364,8.5405
+mlp,mlp_seed42.pth,0.346438,22.7364
+dann,dann_seed42.pth,0.401633,5.2207
+resnet,resnet_seed42.pth,0.283994,7.5105
+wavkan,wavkan_seed42.pth,0.082142,9.242
+wavkan,wavkan_seed42.pth,0.097231,8.4363
+resnet,resnet_seed42.pth,0.283994,7.5105
+vit,vit_seed42.pth,0.57461,13.1242
+mlp,mlp_seed42.pth,0.346438,22.7364
+dann,dann_seed42.pth,0.401633,5.2207

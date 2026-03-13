@@ -1,0 +1,2 @@
+model,seed,zero_shot_acc,zero_shot_f1,zero_shot_auc
+spline_kan,2024,0.534,0.3282,0.7126

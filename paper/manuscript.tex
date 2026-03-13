@@ -91,7 +91,7 @@ where $\psi(\cdot)$ is a mother wavelet function, $a_{ij} \in \mathbb{R}$ is a l
     y_j = \sum_{i=1}^{d_{in}} w_{ij} \cdot \psi\left(\frac{x_i - b_{ij}}{a_{ij}}\right)
 \end{equation}
 
-\textbf{Parameter Initialization and Constraints.} Weight parameters $w_{ij}$ are initialized using Kaiming uniform initialization \cite{he2015delving}. Translation parameters $b_{ij}$ are drawn uniformly from $\mathcal{U}(-1, 1)$ to cover the typical normalized input range. Scale parameters $a_{ij}$ are initialized from $\mathcal{U}(0.1, 1.0)$ to ensure positive initial scales spanning sub-beat to full-beat resolution. During training, $a_{ij}$ is \textit{unconstrained} (no explicit positivity enforcement); however, the symmetric structure of both the Mexican Hat and Morlet wavelets ($\psi(-t) = \psi(t)$ for Mexican Hat) ensures that the wavelet response remains well-defined even if scale values cross zero during optimization. We empirically observe that learned scales remain positive throughout training.
+\textbf{Parameter Initialization and Constraints.} Weight parameters $w_{ij}$ are initialized using Kaiming uniform initialization \cite{he2015delving}. Translation parameters $b_{ij}$ are drawn uniformly from $\mathcal{U}(-1, 1)$ to cover the typical normalized input range. Scale parameters $a_{ij}$ are initialized from $\mathcal{U}(0.1, 1.0)$ to ensure positive initial scales spanning sub-beat to full-beat resolution. During training, the scale $a_{ij}$ is constrained using a \textit{softplus} reparameterization: $a_{ij} = 0.001 + \ln(1 + \exp(s_{ij}))$, where $s_{ij}$ is the unconstrained raw parameter. This formulation ensures strict scale positivity and establishes a minimum resolution threshold factor, preventing the wavelet scale from collapsing to zero---a condition we found critical for maintaining gradient stability during optimization.
 
 We evaluate two wavelet functions:
 
@@ -185,7 +185,7 @@ Table~\ref{tab:main_results} presents the core cross-dataset generalization resu
 \centering
 \caption{Cross-Dataset Transfer Performance (MIT-BIH $\to$ PTB-XL). All results reported as Mean $\pm$ Std over 5 seeds. Best results in \textbf{bold}.}
 \label{tab:main_results}
-\begin{tabular}{@{}lcc@{}}
+\begin{tabular}{@{}lccc@{}}
 \toprule
 \textbf{Model} & \textbf{Params} & \textbf{Zero-Shot F1} & \textbf{10-Shot F1} \\
 \midrule
@@ -381,7 +381,7 @@ Table~\ref{tab:ablation_hdim} studies the impact of hidden layer width. Notably,
 \centering
 \caption{Ablation: Hidden Dimensionality. Source-domain validation F1 and training stability on MIT-BIH ($n=5$ seeds, depth=3, Mexican Hat).}
 \label{tab:ablation_hdim}
-\begin{tabular}{@{}lcc@{}}
+\begin{tabular}{@{}lccc@{}}
 \toprule
 \textbf{Hidden Dim} & \textbf{Params} & \textbf{Best Val F1} & \textbf{Training Stability} \\
 \midrule
@@ -435,11 +435,13 @@ A major finding of this benchmark is the parameter efficiency of KAN architectur
 
 \begin{itemize}
     \item \textbf{Comparison with State-of-the-Art (Raincoat)}: While we evaluate DANN, recent specialized methods like \text{Raincoat} \cite{raincoat2023} apply sinkhorn distance and label-shift correction for complex time-series. We discuss the comparative architectural efficiency of KANs versus these algorithmically intensive DA approaches as a critical trade-off for edge devices.
-    \item \textbf{Statistical Rigor}: While we initially performed evaluations with $n=5$ seeds, the final results presented in this work leverage $n=10$ seeds with Bonferroni correction for multiple comparisons to ensure maximum statistical reliability.
+    \item \textbf{Statistical Rigor}: While we performed evaluations with $n=5$ seeds with Welch's $t$-test for multiple comparisons to ensure maximum statistical reliability.
     \item \textbf{Binary Classification}: While scientifically justified for isolating covariate shift, extending to multi-class or multi-label settings would increase clinical applicability. Future work should explore hierarchical label mapping strategies.
     \item \textbf{Single Lead}: Our evaluation uses Lead~II only. Multi-lead architectures exploiting inter-lead correlations may further improve performance relative to KANs.
     \item \textbf{Experimental Scope}: This benchmark covers three major ECG databases (MIT-BIH, PTB-XL, and CPSC 2018), providing a significantly more robust cross-dataset evaluation than prior single-transfer studies.
 \end{itemize}
+
+\section{Conclusion}
 
 This manuscript significantly extends our foundational work on WavKAN-CL \cite{manivannan2024wavkancl}, shifting focus from interpretable inter-patient detection within a single dataset to the broader challenge of cross-hospital generalization. We presented a comprehensive benchmark of Kolmogorov--Arnold Networks (WavKAN and Spline-KAN) against CNNs, Transformers, and DANNs across three major cohorts (MIT-BIH, PTB-XL, and CPSC 2018).
 

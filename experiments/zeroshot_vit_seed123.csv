@@ -1,0 +1,2 @@
+model,seed,zero_shot_acc,zero_shot_f1,zero_shot_auc
+vit,123,0.0,0.6277117797268791,0.0

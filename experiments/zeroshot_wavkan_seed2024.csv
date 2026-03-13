@@ -1,0 +1,2 @@
+model,seed,zero_shot_acc,zero_shot_f1,zero_shot_auc
+wavkan,2024,0.5457,0.387,0.6526

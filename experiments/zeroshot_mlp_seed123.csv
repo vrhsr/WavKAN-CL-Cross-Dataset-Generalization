@@ -1,0 +1,2 @@
+model,seed,zero_shot_acc,zero_shot_f1,zero_shot_auc
+mlp,123,0.0,0.5427406111666429,0.0

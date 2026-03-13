@@ -43,7 +43,7 @@ def main(args):
     
     # 1. Initialize and Load Model
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=128).to(device)
+        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=64).to(device)
     elif args.model == 'resnet':
         model = ResNet1D(in_channels=1, num_classes=2).to(device)
     elif args.model == 'vit':

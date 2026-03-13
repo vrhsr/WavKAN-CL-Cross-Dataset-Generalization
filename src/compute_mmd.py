@@ -42,23 +42,17 @@ def extract_features(model, loader, device, model_name):
     # Identify the feature layer
     if model_name == 'wavkan':
         # WavKAN: features after the last KAN layer before the classifier
-        # forward(x) loop ends with: features = norm(F.silu(layer(features)))
-        # classifier is self.classifier
         target_layer = model.norms[-1]
     elif model_name == 'resnet':
-        target_layer = model.gap
+        target_layer = model.avgpool
     elif model_name == 'vit':
-        target_layer = model.norm
+        target_layer = model.mlp_head[0]
     elif model_name == 'mlp':
-        target_layer = model.net[-1] # Before classifier if sequential, but MLP has classifier as last layer of net?
-        # Let's check SimpleMLP definition: self.net = nn.Sequential(...)
-        # Last layer in SimpleMLP.net is the classifier. We want the layer BEFORE it.
-        target_layer = model.net[-2] if len(model.net) > 1 else model.net[0]
+        target_layer = model.net[-2] if hasattr(model, 'net') and len(model.net) > 1 else model.net[0]
     elif model_name == 'spline_kan':
-        # SplineKAN has layers in nn.Sequential
         target_layer = model.layers[-2]
     elif model_name == 'dann':
-        target_layer = model.feature_ext
+        target_layer = model.feature_extractor.conv_blocks[-1]  # AdaptiveAvgPool1d
     else:
         raise ValueError("Unknown model")
 
