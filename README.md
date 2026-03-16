@@ -102,8 +102,14 @@ python -m src.test_forgetting --model wavkan --checkpoint experiments/wavkan_end
 # Domain Alignment (MMD)
 python -m src.compute_mmd --model wavkan --checkpoint experiments/wavkan_endpoint.pth
 
-# Statistical Significance
+# Statistical Significance (Welch + paired + bootstrap CI)
 python -m src.statistical_tests
+
+# Export probabilities for calibration / uncertainty metrics
+python -m src.evaluate_uncertainty --model wavkan --data_file data/ptbxl_processed.csv
+
+# Deployment benchmark (FP32 vs INT8, footprint + latency)
+python -m src.benchmark_deployment
 ```
 
 ## Models
@@ -124,3 +130,13 @@ All datasets use a **rhythm-only** binary classification:
 - **Abnormal (1):** AF, LBBB, RBBB, PAC, PVC, and other rhythm disorders
 
 This excludes morphological abnormalities (MI, ST changes) to ensure the cross-dataset transfer measures genuine covariate shift, not label ontology mismatch.
+
+
+## Model Size Note (Reproducibility)
+
+You may see two WavKAN parameter numbers in this project:
+- `~114K` in the compact reference setup (original WavKAN-CL profile).
+- `~471K` in the wider benchmark setup (`hidden_dim=64`) used for fairer capacity comparison with stronger baselines in the manuscript.
+
+Always report the exact architecture hyperparameters (`hidden_dim`, `depth`, wavelet type, stem usage) alongside parameter count in tables and scripts.
+
