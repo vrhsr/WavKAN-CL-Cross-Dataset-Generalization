@@ -11,7 +11,7 @@ from src.models.spline_kan import SplineKANClassifier
 from src.models.dann import DANN
 from sklearn.metrics import f1_score
 
-def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_input=False, corruption_type="awgn", corruption_kwargs=None):
+def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_input=False, corruption_type="awgn", corruption_kwargs=None, pre_filter=False):
     """
     Evaluates model on a dataset with injected noise.
     """
@@ -25,8 +25,17 @@ def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_in
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
+            
+            # Apply pre-filter if requested
+            if pre_filter:
+                # Simple low-pass filter (moving average)
+                kernel_size = 5
+                kernel = torch.ones(1, 1, kernel_size, device=device) / kernel_size
+                inputs = torch.nn.functional.conv1d(inputs, kernel, padding=kernel_size//2)
+            
             if normalize_input:
                 inputs = (inputs - inputs.mean(dim=-1, keepdim=True)) / (inputs.std(dim=-1, keepdim=True) + 1e-6)
+                
             if isinstance(model, DANN):
                 outputs = model.predict(inputs)
             else:
@@ -80,14 +89,14 @@ def main(args):
             label = "Clean" if snr is None else f"{snr}dB"
             col_name = f"{corruption}:{label}"
             print(f"Testing corruption={corruption} at {label}...")
-            f1 = evaluate_noise(model, args.ptb_file, snr, device, normalize_input=args.normalize_input, corruption_type=corruption)
+            f1 = evaluate_noise(model, args.ptb_file, snr, device, normalize_input=args.normalize_input, corruption_type=corruption, pre_filter=args.pre_filter)
             results[col_name] = f1
             print(f"-> F1 Score: {f1:.4f}")
         
     # 3. Save Results
     df_res = pd.DataFrame([results])
     df_res.index = [args.model]
-    filename = f"robustness_{args.model}_norm.csv" if args.normalize_input else f"robustness_{args.model}.csv"
+    filename = f"robustness_{args.model}_norm_filter.csv" if args.normalize_input and args.pre_filter else f"robustness_{args.model}_norm.csv" if args.normalize_input else f"robustness_{args.model}_filter.csv" if args.pre_filter else f"robustness_{args.model}.csv"
     save_path = f"experiments/{filename}"
     df_res.to_csv(save_path)
     print(f"\nSaved results to {save_path}")
@@ -97,6 +106,7 @@ if __name__ == "__main__":
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
     parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
     parser.add_argument('--normalize_input', action='store_true')
+    parser.add_argument('--pre_filter', action='store_true', help='Apply simple low-pass pre-filter')
     parser.add_argument('--corruptions', type=str, default='awgn,baseline_wander,powerline,muscle,motion,lead_dropout,sampling_jitter,label_flip',
                         help='Comma-separated corruption modes for robustness testing')
     args = parser.parse_args()

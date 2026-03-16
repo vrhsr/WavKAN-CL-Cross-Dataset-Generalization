@@ -76,14 +76,26 @@ class WaveletLinear(nn.Module):
         
         return y
 
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        """
+        Handle backward compatibility for the 'scale' -> 'scale_raw' change at the layer level.
+        """
+        key = prefix + 'scale'
+        if key in state_dict:
+            state_dict[prefix + 'scale_raw'] = state_dict.pop(key)
+        
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+                                      missing_keys, unexpected_keys, error_msgs)
+
 
 class Conv1DStem(nn.Module):
     """Lightweight 1D convolutional feature extractor that preserves temporal structure."""
-    def __init__(self, out_dim=64):
+    def __init__(self, out_dim=64, in_channels=1):
         super(Conv1DStem, self).__init__()
         self.stem = nn.Sequential(
             # Block 1: capture local morphology (QRS ~8-12 samples at 100Hz)
-            nn.Conv1d(1, 32, kernel_size=7, stride=1, padding=3),
+            nn.Conv1d(in_channels, 32, kernel_size=7, stride=1, padding=3),
             nn.BatchNorm1d(32),
             nn.GELU(),
             nn.MaxPool1d(2),  # 250 -> 125
@@ -112,17 +124,18 @@ class Conv1DStem(nn.Module):
 
 class WavKANClassifier(nn.Module):
     def __init__(self, input_dim=250, num_classes=2, hidden_dim=64, 
-                 wavelet_type='mexican_hat', depth=3, use_conv_stem=True):
+                 wavelet_type='mexican_hat', depth=3, use_conv_stem=True, in_channels=1):
         super(WavKANClassifier, self).__init__()
         
+        self.in_channels = in_channels
         self.use_conv_stem = use_conv_stem
         
         if use_conv_stem:
-            self.conv_stem = Conv1DStem(out_dim=hidden_dim)
+            self.conv_stem = Conv1DStem(out_dim=hidden_dim, in_channels=in_channels)
             kan_input_dim = self.conv_stem.out_features
         else:
             self.conv_stem = None
-            kan_input_dim = input_dim
+            kan_input_dim = input_dim * in_channels  # Flatten if no stem
         
         self.layers = nn.ModuleList()
         self.norms = nn.ModuleList()
@@ -152,7 +165,7 @@ class WavKANClassifier(nn.Module):
 
     def forward(self, x, contrastive=False):
         if self.use_conv_stem and self.conv_stem is not None:
-            # x: (batch, 1, seq_len) or (batch, seq_len)
+            # x: (batch, in_channels, seq_len)
             features = self.conv_stem(x)
         else:
             # Legacy: flatten directly

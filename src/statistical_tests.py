@@ -1,18 +1,9 @@
-"""
-Enhanced statistical testing for WavKAN-CL experiments.
-
-Includes:
-- Welch's t-test
-- Paired t-test (when seed alignment is available)
-- Cohen's d
-- Bootstrap confidence intervals for mean difference
-- Optional calibration report (ECE/Brier/AUROC/AUPRC with bootstrap CI)
-"""
 import glob
 import numpy as np
 import pandas as pd
 from scipy import stats
 from sklearn.metrics import brier_score_loss, roc_auc_score, average_precision_score
+from statsmodels.stats.multitest import multipletests
 
 
 def cohens_d(group1, group2):
@@ -150,6 +141,23 @@ def run_pairwise_tests(target_model, baselines, metric_loader, metric_name, alph
         })
 
     return results
+
+
+def apply_multiple_testing_corrections(results_df, alpha=0.05):
+    """
+    Apply Bonferroni and Benjamini-Hochberg corrections to p-values.
+    """
+    p_vals = results_df['p_welch'].values
+    reject_bonferroni, p_adj_bonferroni, _, _ = multipletests(p_vals, alpha=alpha, method='bonferroni')
+    reject_bh, p_adj_bh, _, _ = multipletests(p_vals, alpha=alpha, method='fdr_bh')
+    
+    results_df = results_df.copy()
+    results_df['p_adj_bonferroni'] = p_adj_bonferroni
+    results_df['reject_bonferroni'] = reject_bonferroni
+    results_df['p_adj_bh'] = p_adj_bh
+    results_df['reject_bh'] = reject_bh
+    
+    return results_df
 
 
 def calibration_report(pred_csv='experiments/predictions_eval.csv', n_boot=2000):

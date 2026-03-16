@@ -4,36 +4,54 @@ import torch
 from torch.utils.data import Dataset
 
 class HarmonizedDataset(Dataset):
-    def __init__(self, csv_file, noise_snr_db=None, corruption_type='awgn', corruption_kwargs=None):
+    def __init__(self, csv_file, noise_snr_db=None, corruption_type='awgn', corruption_kwargs=None, multi_lead=False, leads=['II'], multi_class=False, class_mapping=None):
         """
         Loads the harmonized ECG data from CSV.
         Expected format: 250 signal columns (0..249), 'label', 'patient_id'
+        For multi-lead: assumes columns named like 'I_0', 'I_1', ..., 'II_0', etc.
+        For multi-class: applies class_mapping to convert labels.
         
         Args:
             csv_file (str): Path to processed CSV
             noise_snr_db (float, optional): If set, adds additive noise with this SNR to signals.
             corruption_type (str): Corruption mode used for robustness testing.
-                Supported: awgn, baseline_wander, powerline, muscle, motion, lead_dropout,
-                sampling_jitter, label_flip.
             corruption_kwargs (dict, optional): Optional parameters for corruption behavior.
+            multi_lead (bool): If True, load multiple leads.
+            leads (list): List of lead names to load (e.g., ['I', 'II', 'III']).
+            multi_class (bool): If True, apply multi-class mapping.
+            class_mapping (dict): Mapping from original labels to multi-class labels.
         """
         print(f"Loading dataset from {csv_file}...")
         self.noise_snr_db = noise_snr_db
         self.corruption_type = corruption_type
         self.corruption_kwargs = corruption_kwargs or {}
-        # Optimize memory by specifying float32 immediately
-        # Read just columns first to build dtype dict without loading data
-        cols = pd.read_csv(csv_file, nrows=0).columns
-        self.signal_cols = [c for c in cols if str(c).isdigit()]
-        dtype_dict = {c: np.float32 for c in self.signal_cols}
-        dtype_dict['label'] = np.int16
-        if 'patient_id' in cols:
-            dtype_dict['patient_id'] = np.int32
-            
-        df = pd.read_csv(csv_file, dtype=dtype_dict)
+        self.multi_lead = multi_lead
+        self.leads = leads
+        self.multi_class = multi_class
+        self.class_mapping = class_mapping or {}
         
-        self.X = df[self.signal_cols].values
+        df = pd.read_csv(csv_file)
+        
+        if multi_lead:
+            # Assume columns like 'I_0' to 'I_249', 'II_0' to 'II_249', etc.
+            self.X = []
+            for lead in leads:
+                lead_cols = [f"{lead}_{i}" for i in range(250)]
+                if not all(col in df.columns for col in lead_cols):
+                    raise ValueError(f"Lead {lead} columns not found in CSV")
+                lead_data = df[lead_cols].values
+                self.X.append(lead_data)
+            self.X = np.stack(self.X, axis=1)  # Shape: (n_samples, n_leads, 250)
+        else:
+            # Single lead
+            self.signal_cols = [c for c in df.columns if str(c).isdigit()]
+            self.X = df[self.signal_cols].values  # Shape: (n_samples, 250)
+        
         self.y = df['label'].values
+        
+        if multi_class and class_mapping:
+            self.y = np.array([class_mapping.get(label, label) for label in self.y])
+            print(f"Applied multi-class mapping. Unique classes: {np.unique(self.y)}")
         
         print(f"Loaded {len(df)} samples. Shape: {self.X.shape}")
         if self.noise_snr_db is not None:
@@ -133,16 +151,25 @@ class HarmonizedDataset(Dataset):
 
     def __getitem__(self, idx):
         # Return (signal, label)
-        # Signal shape: (1, 250) for Conv1D compatibility
         signal_raw = self.X[idx]
         
         # Add noise if configured
         if self.noise_snr_db is not None:
-            signal_raw = self.apply_corruption(signal_raw)
+            if self.multi_lead:
+                # Apply corruption to each lead
+                corrupted = []
+                for lead_idx in range(signal_raw.shape[0]):
+                    corrupted.append(self.apply_corruption(signal_raw[lead_idx]))
+                signal_raw = np.stack(corrupted, axis=0)
+            else:
+                signal_raw = self.apply_corruption(signal_raw)
             # Re-float32 cast in case noise made it float64
             signal_raw = signal_raw.astype(np.float32)
-            
-        signal = torch.tensor(signal_raw).unsqueeze(0) # (1, Length)
+        
+        if self.multi_lead:
+            signal = torch.tensor(signal_raw)  # Shape: (n_leads, 250)
+        else:
+            signal = torch.tensor(signal_raw).unsqueeze(0)  # (1, 250)
         
         label_value = int(self.y[idx])
         if self.noise_snr_db is not None and self.corruption_type == 'label_flip':

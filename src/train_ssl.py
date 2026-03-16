@@ -59,13 +59,19 @@ def train_ssl(args):
         epoch_loss = running_loss / len(loader)
         print(f"Epoch {epoch+1} Loss: {epoch_loss:.4f}")
         
-        # Save Checkpoint
-        if epoch_loss < best_loss:
-            best_loss = epoch_loss
+        # Save Checkpoint at specific epochs
+        checkpoints = [100, 300, 500, 1000]
+        if (epoch + 1) in checkpoints and (epoch + 1) <= args.epochs:
             if not os.path.exists('experiments/ssl'):
                 os.makedirs('experiments/ssl')
+            torch.save(model.state_dict(), f"experiments/ssl/{args.model}_epoch{epoch+1}.pth")
+            print(f"Saved checkpoint at epoch {epoch+1}.")
+        
+        # Save best
+        if epoch_loss < best_loss:
+            best_loss = epoch_loss
             torch.save(model.state_dict(), f"experiments/ssl/{args.model}_pretrained.pth")
-            print("Updates saved.")
+            print("Best model updated.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
