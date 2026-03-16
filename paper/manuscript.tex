@@ -164,13 +164,13 @@ Models trained on MIT-BIH are directly evaluated on PTB-XL without any adaptatio
 For each $k \in \{10, 50, 100, 500\}$, we sample $k$ stratified examples per class from PTB-XL and fine-tune the model for 10 epochs with $\text{lr} = 10^{-4}$. The remaining PTB-XL samples (excluding support set) are used for testing to prevent data leakage.
 
 \subsubsection{Noise Robustness}
-Additive white Gaussian noise is injected at SNR levels $\{20, 10, 0\}$\,dB. Models are evaluated on the noise-corrupted PTB-XL test set without retraining.
+We evaluate robustness under a realistic ECG corruption suite including additive white Gaussian noise (AWGN), baseline wander, powerline interference, muscle artifact, motion artifact, lead-dropout, and sampling jitter. For each corruption, we test SNR levels $\{20, 10, 0\}$\,dB and evaluate models on corruption-shifted PTB-XL without retraining.
 
 \subsubsection{SSL Evaluation}
 SSL-pretrained encoders are evaluated under two protocols: (a)~\textit{Linear Probing}, where only the classification head is trained while the encoder remains frozen, measuring representation quality; and (b)~\textit{Fine-tuning}, where all parameters are updated.
 
 \subsection{Statistical Significance Testing}
-To ensure that reported performance differences are not attributable to random initialization variance, we employ Welch's $t$-test (unequal variance, two-sided) to compare F1 scores between model pairs across the 5 seeds. We report $p$-values for all key comparisons (WavKAN vs.\ each baseline) and consider $p < 0.05$ as statistically significant. Additionally, we report Cohen's $d$ effect size to quantify the practical magnitude of observed differences, following the convention: $|d| < 0.2$ (negligible), $0.2 \leq |d| < 0.8$ (medium), $|d| \geq 0.8$ (large).
+To ensure that reported differences are not attributable to initialization variance, we perform Welch's $t$-test (unequal variance, two-sided), paired $t$-tests on seed-aligned runs, and non-parametric bootstrap confidence intervals (95\%) for mean differences. We additionally report Cohen's $d$ effect size and apply Bonferroni correction for multiple comparisons. For probability outputs, we report uncertainty and calibration metrics (ECE, Brier, AUROC, AUPRC) with bootstrap confidence intervals.
 
 % ============ 5. RESULTS ============
 \section{Results}
@@ -230,7 +230,7 @@ SimpleMLP      & 0.343 $\pm$ 0.030 & 0.250 $\pm$ 0.041 & 0.198 $\pm$ 0.020 & 0.4
 
 \subsection{Noise Robustness}
 
-Table~\ref{tab:robustness} evaluates model robustness under additive Gaussian noise. Notably, DANN experiences an anomalous F1 increase at extreme noise (0 dB), which we attribute to the domain discriminator catastrophically failing and causing the model to collapse to a majority-class prediction that coincidentally pads the F1 score.
+Table~\ref{tab:robustness} reports the AWGN slice of our broader corruption-suite robustness analysis for direct comparability with prior work. Notably, DANN experiences an anomalous F1 increase at extreme noise (0 dB), which we attribute to the domain discriminator collapsing toward majority-class behavior.
 
 \begin{table*}[!t]
 \centering

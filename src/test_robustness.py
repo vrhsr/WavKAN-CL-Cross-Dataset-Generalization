@@ -11,11 +11,11 @@ from src.models.spline_kan import SplineKANClassifier
 from src.models.dann import DANN
 from sklearn.metrics import f1_score
 
-def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_input=False):
+def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_input=False, corruption_type="awgn", corruption_kwargs=None):
     """
     Evaluates model on a dataset with injected noise.
     """
-    dataset = HarmonizedDataset(test_file, noise_snr_db=snr_db)
+    dataset = HarmonizedDataset(test_file, noise_snr_db=snr_db, corruption_type=corruption_type, corruption_kwargs=corruption_kwargs)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     
     model.eval()
@@ -66,33 +66,49 @@ def main(args):
         print(f"Error: Model file {model_path} not found. Train the model first.")
         return
 
+
+    # Seed for reproducibility of corruption sampling
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+
     # 2. Run Stress Test
     snr_levels = [None, 20, 15, 10, 5, 0] # None = Clean
+    corruption_modes = [m.strip() for m in args.corruptions.split(",") if m.strip()]
     results = {}
     
     print("\n--- Starting Noise Stress Test ---")
     print(f"Model: {args.model}")
     print(f"Test Set: {args.ptb_file}")
     
-    for snr in snr_levels:
-        label = "Clean" if snr is None else f"{snr}dB"
-        print(f"Testing at {label}...")
-        f1 = evaluate_noise(model, args.ptb_file, snr, device, normalize_input=args.normalize_input)
-        results[label] = f1
-        print(f"-> F1 Score: {f1:.4f}")
+    for corruption in corruption_modes:
+        for snr in snr_levels:
+            label = "Clean" if snr is None else f"{snr}dB"
+            col_name = f"{corruption}:{label}"
+            print(f"Testing corruption={corruption} at {label}...")
+            f1 = evaluate_noise(model, args.ptb_file, snr, device, normalize_input=args.normalize_input, corruption_type=corruption)
+            results[col_name] = f1
+            print(f"-> F1 Score: {f1:.4f}")
         
     # 3. Save Results
     df_res = pd.DataFrame([results])
     df_res.index = [args.model]
     filename = f"robustness_{args.model}_norm.csv" if args.normalize_input else f"robustness_{args.model}.csv"
-    save_path = f"experiments/{filename}"
+    seed_filename = filename.replace('.csv', f'_seed{args.seed}.csv')
+    save_path = f"experiments/{seed_filename}"
     df_res.to_csv(save_path)
-    print(f"\nSaved results to {save_path}")
+    legacy_path = f"experiments/{filename}"
+    df_res.to_csv(legacy_path)
+    print(f"\nSaved results to {save_path} (and {legacy_path})")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
     parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
     parser.add_argument('--normalize_input', action='store_true')
+    parser.add_argument('--corruptions', type=str, default='awgn,baseline_wander,powerline,muscle,motion,lead_dropout,sampling_jitter,label_flip',
+                        help='Comma-separated corruption modes for robustness testing')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducible corruption sampling')
     args = parser.parse_args()
     main(args)

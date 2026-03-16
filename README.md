@@ -91,10 +91,10 @@ python -m src.train_ssl --model wavkan --epochs 300
 
 ```bash
 # Zero-shot & Few-shot
-python -m src.test_fewshot --model wavkan
+python -m src.test_fewshot --model wavkan --seed 42
 
 # Noise Robustness
-python -m src.test_robustness --model wavkan
+python -m src.test_robustness --model wavkan --seed 42
 
 # Catastrophic Forgetting
 python -m src.test_forgetting --model wavkan --checkpoint experiments/wavkan_endpoint.pth
@@ -102,8 +102,14 @@ python -m src.test_forgetting --model wavkan --checkpoint experiments/wavkan_end
 # Domain Alignment (MMD)
 python -m src.compute_mmd --model wavkan --checkpoint experiments/wavkan_endpoint.pth
 
-# Statistical Significance
+# Statistical Significance (Welch + paired + bootstrap CI)
 python -m src.statistical_tests
+
+# Export probabilities for calibration / uncertainty metrics
+python -m src.evaluate_uncertainty --model wavkan --data_file data/ptbxl_processed.csv
+
+# Deployment benchmark (FP32 vs INT8, footprint + latency)
+python -m src.benchmark_deployment
 ```
 
 ## Models
@@ -124,3 +130,18 @@ All datasets use a **rhythm-only** binary classification:
 - **Abnormal (1):** AF, LBBB, RBBB, PAC, PVC, and other rhythm disorders
 
 This excludes morphological abnormalities (MI, ST changes) to ensure the cross-dataset transfer measures genuine covariate shift, not label ontology mismatch.
+
+
+## Model Size Note (Reproducibility)
+
+You may see two WavKAN parameter numbers in this project:
+- `~114K` in the compact reference setup (original WavKAN-CL profile).
+- `~471K` in the wider benchmark setup (`hidden_dim=64`) used for fairer capacity comparison with stronger baselines in the manuscript.
+
+Always report the exact architecture hyperparameters (`hidden_dim`, `depth`, wavelet type, stem usage) alongside parameter count in tables and scripts.
+
+
+
+### Reproducibility Output Naming
+
+Few-shot and robustness scripts now write both seeded CSVs (e.g., `fewshot_wavkan_seed42.csv`, `robustness_wavkan_seed42.csv`) and legacy filenames for backward compatibility.
