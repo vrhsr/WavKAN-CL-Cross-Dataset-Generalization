@@ -4,18 +4,22 @@ import torch
 from torch.utils.data import Dataset
 
 class HarmonizedDataset(Dataset):
-    def __init__(self, csv_file, noise_snr_db=None, corruption_type='awgn', corruption_kwargs=None):
+    def __init__(self, csv_file, noise_snr_db=None, corruption_type='awgn', corruption_kwargs=None, multi_lead=False, leads=['II'], multi_class=False, class_mapping=None):
         """
         Loads the harmonized ECG data from CSV.
         Expected format: 250 signal columns (0..249), 'label', 'patient_id'
+        For multi-lead: assumes columns named like 'I_0', 'I_1', ..., 'II_0', etc.
+        For multi-class: applies class_mapping to convert labels.
         
         Args:
             csv_file (str): Path to processed CSV
             noise_snr_db (float, optional): If set, adds additive noise with this SNR to signals.
             corruption_type (str): Corruption mode used for robustness testing.
-                Supported: awgn, baseline_wander, powerline, muscle, motion, lead_dropout,
-                sampling_jitter, label_flip.
             corruption_kwargs (dict, optional): Optional parameters for corruption behavior.
+            multi_lead (bool): If True, load multiple leads.
+            leads (list): List of lead names to load (e.g., ['I', 'II', 'III']).
+            multi_class (bool): If True, apply multi-class mapping.
+            class_mapping (dict): Mapping from original labels to multi-class labels.
         """
         print(f"Loading dataset from {csv_file}...")
         self.noise_snr_db = noise_snr_db
@@ -32,8 +36,11 @@ class HarmonizedDataset(Dataset):
             
         df = pd.read_csv(csv_file, dtype=dtype_dict)
         
-        self.X = df[self.signal_cols].values
         self.y = df['label'].values
+        
+        if multi_class and class_mapping:
+            self.y = np.array([class_mapping.get(label, label) for label in self.y])
+            print(f"Applied multi-class mapping. Unique classes: {np.unique(self.y)}")
         
         print(f"Loaded {len(df)} samples. Shape: {self.X.shape}")
         if self.noise_snr_db is not None:
@@ -133,7 +140,6 @@ class HarmonizedDataset(Dataset):
 
     def __getitem__(self, idx):
         # Return (signal, label)
-        # Signal shape: (1, 250) for Conv1D compatibility
         signal_raw = self.X[idx]
         
         # Add noise if configured
@@ -141,8 +147,11 @@ class HarmonizedDataset(Dataset):
             signal_raw = self.apply_corruption(signal_raw)
             # Re-float32 cast in case noise made it float64
             signal_raw = signal_raw.astype(np.float32)
-            
-        signal = torch.tensor(signal_raw).unsqueeze(0) # (1, Length)
+        
+        if self.multi_lead:
+            signal = torch.tensor(signal_raw)  # Shape: (n_leads, 250)
+        else:
+            signal = torch.tensor(signal_raw).unsqueeze(0)  # (1, 250)
         
         label_value = int(self.y[idx])
         if self.noise_snr_db is not None and self.corruption_type == 'label_flip':

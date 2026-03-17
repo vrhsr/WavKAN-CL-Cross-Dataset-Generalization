@@ -140,8 +140,3 @@ You may see two WavKAN parameter numbers in this project:
 
 Always report the exact architecture hyperparameters (`hidden_dim`, `depth`, wavelet type, stem usage) alongside parameter count in tables and scripts.
 
-
-
-### Reproducibility Output Naming
-
-Few-shot and robustness scripts now write both seeded CSVs (e.g., `fewshot_wavkan_seed42.csv`, `robustness_wavkan_seed42.csv`) and legacy filenames for backward compatibility.

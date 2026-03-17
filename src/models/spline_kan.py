@@ -46,11 +46,11 @@ class SplineLinear(nn.Module):
 
 class Conv1DStem(nn.Module):
     """Lightweight 1D convolutional feature extractor that preserves temporal structure."""
-    def __init__(self, out_dim=64):
+    def __init__(self, out_dim=64, in_channels=1):
         super(Conv1DStem, self).__init__()
         self.stem = nn.Sequential(
             # Block 1: capture local morphology (QRS ~8-12 samples at 100Hz)
-            nn.Conv1d(1, 32, kernel_size=7, stride=1, padding=3),
+            nn.Conv1d(in_channels, 32, kernel_size=7, stride=1, padding=3),
             nn.BatchNorm1d(32),
             nn.GELU(),
             nn.MaxPool1d(2),  # 250 -> 125
@@ -77,17 +77,18 @@ class Conv1DStem(nn.Module):
 
 
 class SplineKANClassifier(nn.Module):
-    def __init__(self, input_dim=250, num_classes=2, hidden_dim=64, use_conv_stem=True):
+    def __init__(self, input_dim=250, num_classes=2, hidden_dim=64, use_conv_stem=True, in_channels=1):
         super(SplineKANClassifier, self).__init__()
         
         self.use_conv_stem = use_conv_stem
+        self.in_channels = in_channels
         
         if use_conv_stem:
-            self.conv_stem = Conv1DStem(out_dim=hidden_dim)
+            self.conv_stem = Conv1DStem(out_dim=hidden_dim, in_channels=in_channels)
             kan_input_dim = self.conv_stem.out_features
         else:
             self.conv_stem = None
-            kan_input_dim = input_dim
+            kan_input_dim = input_dim * in_channels
         
         self.layer1 = SplineLinear(kan_input_dim, hidden_dim)
         self.norm1 = nn.LayerNorm(hidden_dim)

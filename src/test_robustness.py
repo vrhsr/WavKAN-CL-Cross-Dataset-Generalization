@@ -1,3 +1,11 @@
+"""
+Robustness Evaluation with:
+- Noise corruptions
+- Optional normalization
+- Optional pre-filtering
+- Seeded reproducibility (for statistical testing)
+"""
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -11,37 +19,63 @@ from src.models.spline_kan import SplineKANClassifier
 from src.models.dann import DANN
 from sklearn.metrics import f1_score
 
-def evaluate_noise(model, test_file, snr_db, device, batch_size=32, normalize_input=False, corruption_type="awgn", corruption_kwargs=None):
-    """
-    Evaluates model on a dataset with injected noise.
-    """
-    dataset = HarmonizedDataset(test_file, noise_snr_db=snr_db, corruption_type=corruption_type, corruption_kwargs=corruption_kwargs)
+
+# ---------------------- EVALUATION ----------------------
+
+def evaluate_noise(
+    model,
+    test_file,
+    snr_db,
+    device,
+    batch_size=32,
+    normalize_input=False,
+    corruption_type="awgn",
+    corruption_kwargs=None,
+    pre_filter=False
+):
+    dataset = HarmonizedDataset(
+        test_file,
+        noise_snr_db=snr_db,
+        corruption_type=corruption_type,
+        corruption_kwargs=corruption_kwargs
+    )
+
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    
+
     model.eval()
-    all_preds = []
-    all_labels = []
-    
+    all_preds, all_labels = [], []
+
     with torch.no_grad():
         for inputs, labels in loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
+
+            # 🔥 Pre-filter (important experimental knob)
+            if pre_filter:
+                kernel_size = 5
+                kernel = torch.ones(1, 1, kernel_size, device=device) / kernel_size
+                inputs = torch.nn.functional.conv1d(inputs, kernel, padding=kernel_size // 2)
+
             if normalize_input:
-                inputs = (inputs - inputs.mean(dim=-1, keepdim=True)) / (inputs.std(dim=-1, keepdim=True) + 1e-6)
-            if isinstance(model, DANN):
-                outputs = model.predict(inputs)
-            else:
-                outputs = model(inputs)
+                inputs = (inputs - inputs.mean(dim=-1, keepdim=True)) / (
+                    inputs.std(dim=-1, keepdim=True) + 1e-6
+                )
+
+            outputs = model.predict(inputs) if isinstance(model, DANN) else model(inputs)
+
             preds = torch.argmax(outputs, dim=1).cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.cpu().numpy())
-            
+
     return f1_score(all_labels, all_preds)
+
+
+# ---------------------- MAIN ----------------------
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
-    
-    # 1. Initialize and Load Model
+
+    # ---------------- MODEL ----------------
     if args.model == 'wavkan':
         model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=64).to(device)
     elif args.model == 'resnet':
@@ -56,59 +90,92 @@ def main(args):
         model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
     else:
         raise ValueError("Unknown model")
-        
-    # Load weights
+
     model_path = f"experiments/{args.model}_endpoint.pth"
     print(f"Loading weights from {model_path}...")
+
     try:
         model.load_state_dict(torch.load(model_path, map_location=device))
     except FileNotFoundError:
-        print(f"Error: Model file {model_path} not found. Train the model first.")
+        print(f"Error: Model file not found: {model_path}")
         return
 
-
-    # Seed for reproducibility of corruption sampling
+    # ---------------- SEED ----------------
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    # 2. Run Stress Test
-    snr_levels = [None, 20, 15, 10, 5, 0] # None = Clean
+    # ---------------- TEST CONFIG ----------------
+    snr_levels = [None, 20, 15, 10, 5, 0]
     corruption_modes = [m.strip() for m in args.corruptions.split(",") if m.strip()]
+
     results = {}
-    
-    print("\n--- Starting Noise Stress Test ---")
+
+    print("\n--- Noise Stress Test ---")
     print(f"Model: {args.model}")
-    print(f"Test Set: {args.ptb_file}")
-    
+    print(f"Pre-filter: {args.pre_filter} | Normalize: {args.normalize_input}")
+
     for corruption in corruption_modes:
         for snr in snr_levels:
             label = "Clean" if snr is None else f"{snr}dB"
             col_name = f"{corruption}:{label}"
-            print(f"Testing corruption={corruption} at {label}...")
-            f1 = evaluate_noise(model, args.ptb_file, snr, device, normalize_input=args.normalize_input, corruption_type=corruption)
+
+            print(f"Testing {corruption} @ {label}")
+
+            f1 = evaluate_noise(
+                model,
+                args.ptb_file,
+                snr,
+                device,
+                normalize_input=args.normalize_input,
+                corruption_type=corruption,
+                pre_filter=args.pre_filter
+            )
+
             results[col_name] = f1
-            print(f"-> F1 Score: {f1:.4f}")
-        
-    # 3. Save Results
-    df_res = pd.DataFrame([results])
-    df_res.index = [args.model]
-    filename = f"robustness_{args.model}_norm.csv" if args.normalize_input else f"robustness_{args.model}.csv"
-    seed_filename = filename.replace('.csv', f'_seed{args.seed}.csv')
-    save_path = f"experiments/{seed_filename}"
-    df_res.to_csv(save_path)
-    legacy_path = f"experiments/{filename}"
-    df_res.to_csv(legacy_path)
-    print(f"\nSaved results to {save_path} (and {legacy_path})")
+            print(f"-> F1: {f1:.4f}")
+
+    # ---------------- SAVE ----------------
+    df = pd.DataFrame([results])
+    df.index = [args.model]
+
+    base_name = f"robustness_{args.model}"
+
+    if args.normalize_input:
+        base_name += "_norm"
+    if args.pre_filter:
+        base_name += "_filter"
+
+    # ✅ Seeded file (for stats)
+    seed_path = f"experiments/{base_name}_seed{args.seed}.csv"
+    df.to_csv(seed_path)
+
+    # ✅ Legacy aggregate (for compatibility)
+    legacy_path = f"experiments/{base_name}.csv"
+    df.to_csv(legacy_path)
+
+    print(f"\nSaved:")
+    print(f"- {seed_path}")
+    print(f"- {legacy_path}")
+
+
+# ---------------------- CLI ----------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
-    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
+    parser.add_argument('--model', type=str, required=True,
+                        choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
+
     parser.add_argument('--normalize_input', action='store_true')
-    parser.add_argument('--corruptions', type=str, default='awgn,baseline_wander,powerline,muscle,motion,lead_dropout,sampling_jitter,label_flip',
-                        help='Comma-separated corruption modes for robustness testing')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducible corruption sampling')
+    parser.add_argument('--pre_filter', action='store_true')
+
+    parser.add_argument('--corruptions', type=str,
+                        default='awgn,baseline_wander,powerline,muscle,motion,lead_dropout,sampling_jitter,label_flip')
+
+    parser.add_argument('--seed', type=int, default=42)
+
     args = parser.parse_args()
     main(args)
