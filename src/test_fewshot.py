@@ -144,7 +144,7 @@ def main(args):
             return
 
         # 1.b. Create Support Set (Few-Shot Train)
-        indices = get_k_shot_indices(full_dataset, k)
+        indices = get_k_shot_indices(full_dataset, k, seed=args.seed)
         train_subset = Subset(full_dataset, indices)
         train_loader = DataLoader(train_subset, batch_size=min(16, k), shuffle=True)
         
@@ -167,9 +167,12 @@ def main(args):
     # Save Results
     df_res = pd.DataFrame([results])
     df_res.index = [args.model]
-    save_path = f"experiments/fewshot_{args.model}.csv"
+    # Save both seeded and legacy outputs for compatibility
+    save_path = f"experiments/fewshot_{args.model}_seed{args.seed}.csv"
     df_res.to_csv(save_path)
-    print(f"Saved results to {save_path}")
+    legacy_path = f"experiments/fewshot_{args.model}.csv"
+    df_res.to_csv(legacy_path)
+    print(f"Saved results to {save_path} (and {legacy_path})")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -180,5 +183,6 @@ if __name__ == "__main__":
     parser.add_argument('--hidden_dim', type=int, default=64, help='Hidden dimension for WavKAN')
     parser.add_argument('--wavelet_type', type=str, default='mexican_hat', choices=['mexican_hat', 'morlet'])
     parser.add_argument('--depth', type=int, default=3, help='Network depth for WavKAN')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for support/query split')
     args = parser.parse_args()
     main(args)

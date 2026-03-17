@@ -91,10 +91,10 @@ python -m src.train_ssl --model wavkan --epochs 300
 
 ```bash
 # Zero-shot & Few-shot
-python -m src.test_fewshot --model wavkan
+python -m src.test_fewshot --model wavkan --seed 42
 
 # Noise Robustness
-python -m src.test_robustness --model wavkan
+python -m src.test_robustness --model wavkan --seed 42
 
 # Catastrophic Forgetting
 python -m src.test_forgetting --model wavkan --checkpoint experiments/wavkan_endpoint.pth

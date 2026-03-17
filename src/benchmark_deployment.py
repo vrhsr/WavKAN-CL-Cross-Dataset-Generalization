@@ -5,7 +5,6 @@ import tempfile
 import time
 import torch
 import numpy as np
-import torch.quantization
 
 from src.models.wavkan import WavKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP

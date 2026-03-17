@@ -25,27 +25,16 @@ class HarmonizedDataset(Dataset):
         self.noise_snr_db = noise_snr_db
         self.corruption_type = corruption_type
         self.corruption_kwargs = corruption_kwargs or {}
-        self.multi_lead = multi_lead
-        self.leads = leads
-        self.multi_class = multi_class
-        self.class_mapping = class_mapping or {}
-        
-        df = pd.read_csv(csv_file)
-        
-        if multi_lead:
-            # Assume columns like 'I_0' to 'I_249', 'II_0' to 'II_249', etc.
-            self.X = []
-            for lead in leads:
-                lead_cols = [f"{lead}_{i}" for i in range(250)]
-                if not all(col in df.columns for col in lead_cols):
-                    raise ValueError(f"Lead {lead} columns not found in CSV")
-                lead_data = df[lead_cols].values
-                self.X.append(lead_data)
-            self.X = np.stack(self.X, axis=1)  # Shape: (n_samples, n_leads, 250)
-        else:
-            # Single lead
-            self.signal_cols = [c for c in df.columns if str(c).isdigit()]
-            self.X = df[self.signal_cols].values  # Shape: (n_samples, 250)
+        # Optimize memory by specifying float32 immediately
+        # Read just columns first to build dtype dict without loading data
+        cols = pd.read_csv(csv_file, nrows=0).columns
+        self.signal_cols = [c for c in cols if str(c).isdigit()]
+        dtype_dict = {c: np.float32 for c in self.signal_cols}
+        dtype_dict['label'] = np.int16
+        if 'patient_id' in cols:
+            dtype_dict['patient_id'] = np.int32
+            
+        df = pd.read_csv(csv_file, dtype=dtype_dict)
         
         self.y = df['label'].values
         
@@ -155,14 +144,7 @@ class HarmonizedDataset(Dataset):
         
         # Add noise if configured
         if self.noise_snr_db is not None:
-            if self.multi_lead:
-                # Apply corruption to each lead
-                corrupted = []
-                for lead_idx in range(signal_raw.shape[0]):
-                    corrupted.append(self.apply_corruption(signal_raw[lead_idx]))
-                signal_raw = np.stack(corrupted, axis=0)
-            else:
-                signal_raw = self.apply_corruption(signal_raw)
+            signal_raw = self.apply_corruption(signal_raw)
             # Re-float32 cast in case noise made it float64
             signal_raw = signal_raw.astype(np.float32)
         
