@@ -4,9 +4,12 @@ import tempfile
 import time
 import torch
 import numpy as np
+<<<<<<< HEAD
 import pandas as pd
 import torch.quantization
 from thop import profile
+=======
+>>>>>>> 31960eb21812e61d0c2c98429f36f02f1ec30048
 
 from src.models.wavkan import WavKANClassifier
 from src.models.baselines import ResNet1D, ViT1D, SimpleMLP, InceptionTime

@@ -26,6 +26,7 @@ class HarmonizedDataset(Dataset):
         self.noise_snr_db = noise_snr_db
         self.corruption_type = corruption_type
         self.corruption_kwargs = corruption_kwargs or {}
+<<<<<<< HEAD
         self.multi_lead = multi_lead
         self.leads = leads
         self.multi_class = multi_class
@@ -58,6 +59,26 @@ class HarmonizedDataset(Dataset):
             raise ValueError(f"Unsupported format: {data_path}")
             
         print(f"Loaded {len(self.X)} samples. Shape: {self.X.shape}")
+=======
+        # Optimize memory by specifying float32 immediately
+        # Read just columns first to build dtype dict without loading data
+        cols = pd.read_csv(csv_file, nrows=0).columns
+        self.signal_cols = [c for c in cols if str(c).isdigit()]
+        dtype_dict = {c: np.float32 for c in self.signal_cols}
+        dtype_dict['label'] = np.int16
+        if 'patient_id' in cols:
+            dtype_dict['patient_id'] = np.int32
+            
+        df = pd.read_csv(csv_file, dtype=dtype_dict)
+        
+        self.y = df['label'].values
+        
+        if multi_class and class_mapping:
+            self.y = np.array([class_mapping.get(label, label) for label in self.y])
+            print(f"Applied multi-class mapping. Unique classes: {np.unique(self.y)}")
+        
+        print(f"Loaded {len(df)} samples. Shape: {self.X.shape}")
+>>>>>>> 31960eb21812e61d0c2c98429f36f02f1ec30048
         if self.noise_snr_db is not None:
             print(f"Configured for Noise Injection: SNR={self.noise_snr_db}dB")
 
@@ -157,11 +178,16 @@ class HarmonizedDataset(Dataset):
         signal_raw = self.X[idx]
         
         if self.noise_snr_db is not None:
+<<<<<<< HEAD
             if signal_raw.ndim == 2:
                 corrupted = [self.apply_corruption(signal_raw[i]) for i in range(signal_raw.shape[0])]
                 signal_raw = np.stack(corrupted, axis=0)
             else:
                 signal_raw = self.apply_corruption(signal_raw)
+=======
+            signal_raw = self.apply_corruption(signal_raw)
+            # Re-float32 cast in case noise made it float64
+>>>>>>> 31960eb21812e61d0c2c98429f36f02f1ec30048
             signal_raw = signal_raw.astype(np.float32)
         
         if signal_raw.ndim == 2:
