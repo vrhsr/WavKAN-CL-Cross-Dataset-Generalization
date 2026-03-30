@@ -45,7 +45,7 @@ class DANNFeatureExtractor(nn.Module):
     Designed to be roughly parameter-comparable to the other baselines.
     Uses Conv1D blocks with batch normalization and residual connections.
     """
-    def __init__(self, in_channels=1, feature_dim=256):
+    def __init__(self, in_channels=12, feature_dim=256):
         super().__init__()
         self.conv_blocks = nn.Sequential(
             # Block 1: 1 -> 64 channels
@@ -68,21 +68,23 @@ class DANNFeatureExtractor(nn.Module):
             nn.Conv1d(256, feature_dim, kernel_size=5, stride=2, padding=2, bias=False),
             nn.BatchNorm1d(feature_dim),
             nn.ReLU(inplace=True),
-            
-            nn.AdaptiveAvgPool1d(1),
         )
-        self.feature_dim = feature_dim
+        
+        # Dynamic stem output dimension
+        with torch.no_grad():
+            dummy = torch.zeros(1, in_channels, 1000) # Default seq_len
+            self.feature_dim = self.conv_blocks(dummy).view(1, -1).shape[1]
 
     def forward(self, x):
         if x.dim() == 2:
             x = x.unsqueeze(1)
         x = self.conv_blocks(x)
-        return x.squeeze(-1)  # (B, feature_dim)
+        return x.view(x.size(0), -1)  # (B, feature_dim)
 
 
 class DANNClassifier(nn.Module):
     """Label classifier head."""
-    def __init__(self, feature_dim=256, num_classes=2):
+    def __init__(self, feature_dim=256, num_classes=5):
         super().__init__()
         self.classifier = nn.Sequential(
             nn.Linear(feature_dim, 128),
@@ -128,11 +130,32 @@ class DANN(nn.Module):
         num_classes: Number of classification labels
         feature_dim: Dimensionality of the feature representation
     """
-    def __init__(self, in_channels=1, num_classes=2, feature_dim=256):
+    def __init__(self, backbone='dann', in_channels=12, num_classes=5, feature_dim=256, **kwargs):
         super().__init__()
-        self.feature_extractor = DANNFeatureExtractor(in_channels, feature_dim)
-        self.label_classifier = DANNClassifier(feature_dim, num_classes)
-        self.domain_discriminator = DANNDomainDiscriminator(feature_dim)
+        self.backbone = backbone
+        
+        if backbone == 'wavkan':
+            from src.models.wavkan import WavKANClassifier
+            self.feature_extractor = WavKANClassifier(in_channels=in_channels, hidden_dim=64)
+            real_feature_dim = 64
+        elif backbone == 'wavkan_multiscale':
+            from src.models.wavkan_multiscale import MultiScaleWavKANClassifier
+            self.feature_extractor = MultiScaleWavKANClassifier(in_channels=in_channels, hidden_dim=64)
+            real_feature_dim = 64
+        elif backbone == 'resnet':
+            from src.models.baselines import ResNet1D
+            self.feature_extractor = ResNet1D(in_channels=in_channels, num_classes=num_classes)
+            real_feature_dim = 1024
+        elif backbone == 'inception':
+            from src.models.baselines import InceptionTime
+            self.feature_extractor = InceptionTime(in_channels=in_channels, num_classes=num_classes)
+            real_feature_dim = 128
+        else:
+            self.feature_extractor = DANNFeatureExtractor(in_channels, feature_dim)
+            real_feature_dim = self.feature_extractor.feature_dim
+            
+        self.label_classifier = DANNClassifier(real_feature_dim, num_classes)
+        self.domain_discriminator = DANNDomainDiscriminator(real_feature_dim)
 
     def forward(self, x, alpha=1.0):
         """
@@ -147,12 +170,20 @@ class DANN(nn.Module):
             domain_output: Domain prediction logits (B, 1)
         """
         self.domain_discriminator.set_alpha(alpha)
-        features = self.feature_extractor(x)
+        
+        if hasattr(self.feature_extractor, 'extract_features'):
+            features = self.feature_extractor.extract_features(x)
+        else:
+            features = self.feature_extractor(x)
+            
         class_output = self.label_classifier(features)
         domain_output = self.domain_discriminator(features)
         return class_output, domain_output
 
     def predict(self, x):
         """Inference-only forward (no domain discriminator)."""
-        features = self.feature_extractor(x)
+        if hasattr(self.feature_extractor, 'extract_features'):
+            features = self.feature_extractor.extract_features(x)
+        else:
+            features = self.feature_extractor(x)
         return self.label_classifier(features)

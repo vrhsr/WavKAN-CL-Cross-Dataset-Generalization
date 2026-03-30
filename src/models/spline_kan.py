@@ -46,7 +46,7 @@ class SplineLinear(nn.Module):
 
 class Conv1DStem(nn.Module):
     """Lightweight 1D convolutional feature extractor that preserves temporal structure."""
-    def __init__(self, out_dim=64, in_channels=1):
+    def __init__(self, out_dim=64, in_channels=12):
         super(Conv1DStem, self).__init__()
         self.stem = nn.Sequential(
             # Block 1: capture local morphology (QRS ~8-12 samples at 100Hz)
@@ -77,7 +77,7 @@ class Conv1DStem(nn.Module):
 
 
 class SplineKANClassifier(nn.Module):
-    def __init__(self, input_dim=250, num_classes=2, hidden_dim=64, use_conv_stem=True, in_channels=1):
+    def __init__(self, input_dim=1000, num_classes=5, hidden_dim=64, use_conv_stem=True, in_channels=12):
         super(SplineKANClassifier, self).__init__()
         
         self.use_conv_stem = use_conv_stem
@@ -85,7 +85,9 @@ class SplineKANClassifier(nn.Module):
         
         if use_conv_stem:
             self.conv_stem = Conv1DStem(out_dim=hidden_dim, in_channels=in_channels)
-            kan_input_dim = self.conv_stem.out_features
+            with torch.no_grad():
+                dummy = torch.zeros(1, in_channels, input_dim)
+                kan_input_dim = self.conv_stem(dummy).shape[1]
         else:
             self.conv_stem = None
             kan_input_dim = input_dim * in_channels
@@ -108,7 +110,7 @@ class SplineKANClassifier(nn.Module):
         
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
-    def forward(self, x, contrastive=False):
+    def extract_features(self, x):
         if self.use_conv_stem and self.conv_stem is not None:
             x = self.conv_stem(x)
         else:
@@ -118,6 +120,10 @@ class SplineKANClassifier(nn.Module):
         x = self.norm1(self.layer1(x)) 
         x = self.norm2(self.layer2(x))
         features = self.norm3(self.layer3(x))
+        return features
+
+    def forward(self, x, contrastive=False):
+        features = self.extract_features(x)
         
         if contrastive:
             return self.projection_head(features)

@@ -48,7 +48,7 @@ def measure_inference_time(model, dummy_input, device, n_warmup=50, n_runs=200):
     return per_sample_ms, avg_time_ms, std_time_ms
 
 
-def estimate_flops_manual(model_name, input_dim=250):
+def estimate_flops_manual(model_name, input_dim=1000):
     """
     Estimate FLOPs manually since thop may not be installed.
     Counts multiply-accumulate operations (MACs).
@@ -96,12 +96,12 @@ def main():
     print(f"Device: {device}")
     
     models = {
-        'WavKAN': WavKANClassifier(input_dim=250, num_classes=2),
-        'Spline-KAN': SplineKANClassifier(input_dim=250, num_classes=2),
-        'ResNet-1D': ResNet1D(in_channels=1, num_classes=2),
-        'ViT-1D': ViT1D(seq_len=250, num_classes=2),
-        'SimpleMLP': SimpleMLP(input_dim=250, num_classes=2),
-        'DANN': DANN(in_channels=1, num_classes=2, feature_dim=256),
+        'WavKAN': WavKANClassifier(input_dim=1000, num_classes=5),
+        'Spline-KAN': SplineKANClassifier(input_dim=1000, num_classes=5),
+        'ResNet-1D': ResNet1D(in_channels=12, num_classes=5),
+        'ViT-1D': ViT1D(seq_len=1000, num_classes=5),
+        'SimpleMLP': SimpleMLP(input_dim=1000, num_classes=5),
+        'DANN': DANN(in_channels=12, num_classes=5, feature_dim=256),
     }
     
     model_keys = ['wavkan', 'spline_kan', 'resnet', 'vit', 'mlp', 'dann']

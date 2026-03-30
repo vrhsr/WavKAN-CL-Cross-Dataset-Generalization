@@ -13,9 +13,9 @@ from sklearn.metrics import f1_score
 
 
 def entropy_loss(logits):
-    """Entropy minimization loss for TENT."""
-    probs = torch.softmax(logits, dim=1)
-    entropy = -torch.sum(probs * torch.log(probs + 1e-8), dim=1)
+    """Entropy minimization loss for TENT (Multi-label)."""
+    probs = torch.sigmoid(logits)
+    entropy = -(probs * torch.log(probs + 1e-8) + (1 - probs) * torch.log(1 - probs + 1e-8))
     return entropy.mean()
 
 
@@ -60,11 +60,12 @@ def evaluate_tent(model, test_loader, device, adapt_steps=1, adapt_lr=1e-3):
 
             # Now predict
             outputs = model(inputs)
-            preds = torch.argmax(outputs, dim=1).cpu().numpy()
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).int().cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.cpu().numpy())
 
-    return f1_score(all_labels, all_preds)
+    return f1_score(all_labels, all_preds, average='macro', zero_division=0)
 
 
 def main(args):
@@ -73,15 +74,15 @@ def main(args):
 
     # Load model
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim).to(device)
+        model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim).to(device)
     elif args.model == 'spline_kan':
-        model = SplineKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim).to(device)
+        model = SplineKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim).to(device)
     elif args.model == 'resnet':
-        model = ResNet1D(in_channels=1, num_classes=2).to(device)
+        model = ResNet1D(in_channels=12, num_classes=5).to(device)
     elif args.model == 'vit':
-        model = ViT1D(seq_len=250, num_classes=2).to(device)
+        model = ViT1D(seq_len=1000, num_classes=5).to(device)
     elif args.model == 'simple_mlp':
-        base_model = SimpleMLP(input_dim=250, num_classes=2).to(device)
+        base_model = SimpleMLP(input_dim=1000, num_classes=5).to(device)
 
     # Load pretrained model
     model.load_state_dict(torch.load(args.model_path))
@@ -99,10 +100,11 @@ def main(args):
         for inputs, labels in target_loader:
             inputs, labels = inputs.to(device).float(), labels.to(device).long()
             outputs = model(inputs)
-            preds = torch.argmax(outputs, dim=1).cpu().numpy()
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).int().cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.cpu().numpy())
-    no_adapt_f1 = f1_score(all_labels, all_preds)
+    no_adapt_f1 = f1_score(all_labels, all_preds, average='macro', zero_division=0)
     print(f"F1 without TENT: {no_adapt_f1:.4f}")
 
     # Evaluate with TENT

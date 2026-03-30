@@ -11,25 +11,16 @@ from src.models.baselines import ResNet1D, ViT1D, SimpleMLP
 from src.models.spline_kan import SplineKANClassifier
 from src.models.dann import DANN
 from sklearn.metrics import f1_score
+from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
 
 def get_k_shot_indices(dataset, k, seed=42):
     """
-    Stratified sampling: selects k//2 samples per class.
-    Returns balanced support set indices.
+    Multilabel Stratified sampling: selects precisely k samples maximizing class balance.
     """
-    np.random.seed(seed)
-    labels = np.array([dataset[i][1].item() for i in range(len(dataset))])
-    k_per_class = k // 2
-    
-    class_0_idx = np.where(labels == 0)[0]
-    class_1_idx = np.where(labels == 1)[0]
-    
-    selected_0 = np.random.choice(class_0_idx, min(k_per_class, len(class_0_idx)), replace=False)
-    selected_1 = np.random.choice(class_1_idx, min(k_per_class, len(class_1_idx)), replace=False)
-    
-    indices = np.concatenate([selected_0, selected_1])
-    np.random.shuffle(indices)
-    return indices
+    labels = np.array([dataset[i][1].numpy() for i in range(len(dataset))])
+    msss = MultilabelStratifiedShuffleSplit(n_splits=1, train_size=min(k, len(dataset)-1), random_state=seed)
+    train_idx, _ = next(msss.split(np.zeros(len(labels)), labels))
+    return train_idx
 
 def fine_tune(model, train_loader, epochs=10, lr=1e-4, device='cpu', linear_probe=False):
     """
@@ -54,13 +45,13 @@ def fine_tune(model, train_loader, epochs=10, lr=1e-4, device='cpu', linear_prob
             for param in model.fc.parameters():
                 param.requires_grad = True
     
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     
     model.train()
     for epoch in range(epochs):
         for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device).float(), labels.to(device).long()
+            inputs, labels = inputs.to(device).float(), labels.to(device).float()
             optimizer.zero_grad()
             if isinstance(model, DANN):
                 outputs = model.predict(inputs)
@@ -77,15 +68,16 @@ def evaluate(model, loader, device):
     all_labels = []
     with torch.no_grad():
         for inputs, labels in loader:
-            inputs, labels = inputs.to(device).float(), labels.to(device).long()
+            inputs, labels = inputs.to(device).float(), labels.to(device).float()
             if isinstance(model, DANN):
                 outputs = model.predict(inputs)
             else:
                 outputs = model(inputs)
-            preds = torch.argmax(outputs, dim=1).cpu().numpy()
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).int().cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.cpu().numpy())
-    return f1_score(all_labels, all_preds)
+    return f1_score(all_labels, all_preds, average='macro', zero_division=0)
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -106,20 +98,17 @@ def main(args):
         
         # 1.a. Re-initialize model with Pre-trained Weights (Reset for each k)
         if args.model == 'wavkan':
-            model = WavKANClassifier(input_dim=250, num_classes=2,
+            model = WavKANClassifier(input_dim=1000, num_classes=5,
                                    hidden_dim=args.hidden_dim,
-                                   wavelet_type=args.wavelet_type,
-                                   depth=args.depth).to(device)
+                                   in_channels=12).to(device)
         elif args.model == 'resnet':
-            model = ResNet1D(in_channels=1, num_classes=2).to(device)
+            model = ResNet1D(in_channels=12, num_classes=5, seq_len=1000).to(device)
         elif args.model == 'vit':
-            model = ViT1D(seq_len=250, num_classes=2).to(device)
+            model = ViT1D(seq_len=1000, num_classes=5, in_channels=12).to(device)
         elif args.model == 'mlp':
-            model = SimpleMLP(input_dim=250, num_classes=2).to(device)
+            model = SimpleMLP(input_dim=1000, num_classes=5, in_channels=12).to(device)
         elif args.model == 'spline_kan':
-            model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
-        elif args.model == 'dann':
-            model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
+            model = SplineKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim, in_channels=12).to(device)
             
         # Load Zero-Shot Weights (Starting point)
         # Load Weights (Zero-Shot or SSL)
@@ -136,7 +125,7 @@ def main(args):
             # SSL model has same architecture, so strict loading should work 
             # UNLESS classifier head shapes mismatch (2 classes vs distinct).
             # WavKAN SSL has 2 output classes in classifier?
-            # train_ssl.py: model = WavKANClassifier(..., num_classes=2)
+            # train_ssl.py: model = WavKANClassifier(..., num_classes=5)
             # So architecture is identical.
             model.load_state_dict(state_dict, strict=False)
         except FileNotFoundError:

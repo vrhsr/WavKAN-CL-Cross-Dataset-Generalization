@@ -6,59 +6,48 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import argparse
 import os
+import json
+from scipy.signal import find_peaks
 
 from src.models.wavkan import WavKANClassifier
 from src.dataset import HarmonizedDataset
 from torch.utils.data import DataLoader
 
 def get_wavelet_activations(model, signal):
-    """
-    Extract wavelet scale activations for a given signal.
-    Returns heatmap of scale magnitudes per time step.
-    """
     model.eval()
     with torch.no_grad():
-        # Get features before classification
         if model.use_conv_stem and model.conv_stem is not None:
             features = model.conv_stem(signal.unsqueeze(0))
         else:
             features = signal.view(1, -1)
         
-        # Get activations from first layer
-        layer = model.layers[0]  # WaveletLinear
+        layer = model.layers[0]
         x = features
         
-        # Compute wavelet responses
-        scale = F.softplus(layer.scale_raw) + layer.a_min
+        scale = layer.scale_min + (layer.scale_max - layer.scale_min) * torch.sigmoid(layer.scale_raw)
         translation = layer.translation
         
-        # For each output feature, compute wavelet response across input
         activations = []
-        for out_idx in range(min(layer.out_features, 10)):  # Limit for visualization
+        for out_idx in range(min(layer.out_features, 10)):
             responses = []
-            for in_idx in range(min(layer.in_features, 50)):  # Limit
+            for in_idx in range(min(layer.in_features, 50)):
                 s = scale[out_idx, in_idx]
                 t = translation[out_idx, in_idx]
-                wavelet = layer._compute_wavelet((x[0, in_idx] - t) / s) * layer.weights[out_idx, in_idx]
+                z = (x[0, in_idx] - t) / (s + 1e-8)
+                wavelet = layer._compute_wavelet(z) * layer.weights[out_idx, in_idx]
                 responses.append(wavelet.item())
             activations.append(responses)
         
-        return np.array(activations)  # (out_features, in_features)
+        return np.array(activations)
 
 
 def generate_heatmaps(model_path, data_file, output_dir, num_samples=10):
-    """
-    Generate wavelet activation heatmaps for correct/incorrect predictions.
-    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # Load model
-    model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=64)
-    model.load_state_dict(torch.load(model_path))
+    model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=64, in_channels=12)
+    model.load_state_dict(torch.load(model_path)['model_state_dict'] if 'model_state_dict' in torch.load(model_path) else torch.load(model_path))
     model.to(device)
     model.eval()
     
-    # Load data
     dataset = HarmonizedDataset(data_file)
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
     
@@ -69,29 +58,25 @@ def generate_heatmaps(model_path, data_file, output_dir, num_samples=10):
     
     with torch.no_grad():
         for i, (signal, label) in enumerate(loader):
-            if i >= num_samples:
-                break
+            if i >= num_samples: break
             
-            signal = signal.to(device)
+            signal = signal.to(device).float()
             output = model(signal)
             pred = torch.argmax(output, dim=1).item()
+            true_cls = torch.argmax(label, dim=1).item()
             
-            # Get activations
             activations = get_wavelet_activations(model, signal.squeeze(0))
             
-            if pred == label.item():
+            if pred == true_cls:
                 correct_activations.append(activations)
             else:
                 incorrect_activations.append(activations)
     
-    # Average activations
     if correct_activations:
         avg_correct = np.mean(correct_activations, axis=0)
         plt.figure(figsize=(12, 8))
         sns.heatmap(avg_correct, cmap='viridis', cbar=True)
         plt.title('Average Wavelet Activations - Correct Predictions')
-        plt.xlabel('Input Features (Time Steps)')
-        plt.ylabel('Output Features')
         plt.savefig(os.path.join(output_dir, 'correct_predictions_heatmap.png'))
         plt.close()
     
@@ -100,186 +85,152 @@ def generate_heatmaps(model_path, data_file, output_dir, num_samples=10):
         plt.figure(figsize=(12, 8))
         sns.heatmap(avg_incorrect, cmap='viridis', cbar=True)
         plt.title('Average Wavelet Activations - Incorrect Predictions')
-        plt.xlabel('Input Features (Time Steps)')
-        plt.ylabel('Output Features')
         plt.savefig(os.path.join(output_dir, 'incorrect_predictions_heatmap.png'))
         plt.close()
-    
-    print(f"Heatmaps saved to {output_dir}")
 
 
 def faithfulness_deletion(model, signal, baseline='zero', n_steps=10):
-    """
-    Deletion faithfulness: Remove most important features and measure drop in confidence.
-    """
     model.eval()
     with torch.no_grad():
         original_output = model(signal.unsqueeze(0))
-        original_prob = torch.softmax(original_output, dim=1)[0, 1].item()  # Assuming class 1 is positive
+        original_prob = torch.sigmoid(original_output)[0, 0].item()
         
-        # Get feature importance (absolute activations)
         activations = get_wavelet_activations(model, signal.squeeze(0))
-        importance = np.abs(activations).sum(axis=0)  # Sum over output features
-        
-        # Sort features by importance
+        importance = np.abs(activations).sum(axis=0)
         sorted_indices = np.argsort(importance)[::-1]
         
         probs = [original_prob]
         for i in range(1, n_steps + 1):
-            # Remove top i% features
             n_remove = int(len(sorted_indices) * i / n_steps)
             remove_indices = sorted_indices[:n_remove]
             
             modified_signal = signal.clone()
-            if baseline == 'zero':
-                modified_signal[remove_indices] = 0
-            elif baseline == 'mean':
-                modified_signal[remove_indices] = signal.mean()
+            # Approximation across channels:
+            if baseline == 'zero': modified_signal[:, remove_indices] = 0
+            elif baseline == 'mean': modified_signal[:, remove_indices] = signal.mean()
             
             output = model(modified_signal.unsqueeze(0))
-            prob = torch.softmax(output, dim=1)[0, 1].item()
+            prob = torch.sigmoid(output)[0, 0].item()
             probs.append(prob)
-        
-        # Area under curve (higher AUC = more faithful)
-        auc = np.trapz(probs, dx=1/n_steps)
-        return auc
+            
+        return np.trapz(probs, dx=1/n_steps)
 
+def faithfulness_insertion(model, signal, baseline='zero', n_steps=10):
+    model.eval()
+    with torch.no_grad():
+        activations = get_wavelet_activations(model, signal.squeeze(0))
+        importance = np.abs(activations).sum(axis=0)
+        sorted_indices = np.argsort(importance)[::-1]
+        
+        modified_signal = torch.zeros_like(signal) if baseline == 'zero' else torch.ones_like(signal) * signal.mean()
+        
+        probs = [torch.sigmoid(model(modified_signal.unsqueeze(0)))[0, 0].item()]
+        
+        for i in range(1, n_steps + 1):
+            n_insert = int(len(sorted_indices) * i / n_steps)
+            insert_indices = sorted_indices[:n_insert]
+            
+            modified_signal[:, insert_indices] = signal[:, insert_indices]
+            
+            output = model(modified_signal.unsqueeze(0))
+            prob = torch.sigmoid(output)[0, 0].item()
+            probs.append(prob)
+            
+        return np.trapz(probs, dx=1/n_steps)
+
+class GradCAM:
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.gradients = None
+        self.activations = None
+        target_layer.register_forward_hook(self.save_activation)
+        target_layer.register_backward_hook(self.save_gradient)
+        
+    def save_activation(self, module, input, output):
+        self.activations = output.detach()
+        
+    def save_gradient(self, module, grad_input, grad_output):
+        self.gradients = grad_output[0].detach()
+        
+    def __call__(self, x, class_idx=None):
+        self.model.zero_grad()
+        output = self.model(x)
+        if class_idx is None: class_idx = torch.argmax(output, dim=1).item()
+        
+        score = output[0, class_idx]
+        score.backward()
+        
+        weights = torch.mean(self.gradients, dim=[0, 2], keepdim=True)
+        cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
+        cam = F.relu(cam)
+        cam = F.interpolate(cam, size=x.shape[2], mode='linear', align_corners=False)
+        cam = cam - cam.min()
+        cam = cam / (cam.max() + 1e-8)
+        return cam.squeeze().cpu().numpy()
+
+def qrs_iou_score(signal, saliency_map, fs=100):
+    signal_np = signal.cpu().numpy().flatten()
+    peaks, _ = find_peaks(signal_np, distance=int(0.3*fs), height=np.std(signal_np))
+    qrs_mask = np.zeros_like(signal_np)
+    for p in peaks:
+        qrs_mask[max(0, p-int(0.05*fs)):min(len(signal_np), p+int(0.05*fs))] = 1
+        
+    saliency_mask = (saliency_map > np.percentile(saliency_map, 80)).astype(int)
+    
+    intersection = np.logical_and(qrs_mask, saliency_mask).sum()
+    union = np.logical_or(qrs_mask, saliency_mask).sum()
+    return intersection / union if union > 0 else 0.0
 
 def generate_faithfulness_report(model_path, data_file, output_dir, num_samples=50):
-    """
-    Generate faithfulness metrics for interpretability evaluation.
-    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=64)
-    model.load_state_dict(torch.load(model_path))
+    model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=64, in_channels=12)
+    model.load_state_dict(torch.load(model_path)['model_state_dict'] if 'model_state_dict' in torch.load(model_path) else torch.load(model_path))
     model.to(device)
     model.eval()
     
     dataset = HarmonizedDataset(data_file)
     loader = DataLoader(dataset, batch_size=1, shuffle=False)
     
-    aucs_zero = []
-    aucs_mean = []
+    metrics = {
+        'audc_zero': [], 'audc_mean': [],
+        'auic_zero': [], 'auic_mean': [],
+        'qrs_iou': []
+    }
     
     with torch.no_grad():
         for i, (signal, label) in enumerate(loader):
-            if i >= num_samples:
-                break
+            if i >= num_samples: break
+            signal = signal.to(device).float().squeeze(0)
             
-            signal = signal.to(device).squeeze(0)
+            metrics['audc_zero'].append(faithfulness_deletion(model, signal, 'zero'))
+            metrics['audc_mean'].append(faithfulness_deletion(model, signal, 'mean'))
+            metrics['auic_zero'].append(faithfulness_insertion(model, signal, 'zero'))
+            metrics['auic_mean'].append(faithfulness_insertion(model, signal, 'mean'))
             
-            auc_zero = faithfulness_deletion(model, signal, baseline='zero')
-            auc_mean = faithfulness_deletion(model, signal, baseline='mean')
+            # Approximate QRS IOU from raw absolute importance map
+            acts = get_wavelet_activations(model, signal)
+            importance = np.abs(acts).sum(axis=0)
+            importance_upsampled = np.repeat(importance, len(signal[0]) // len(importance))
             
-            aucs_zero.append(auc_zero)
-            aucs_mean.append(auc_mean)
-    
-    # Summary stats
-    results = {
-        'auc_zero_mean': np.mean(aucs_zero),
-        'auc_zero_std': np.std(aucs_zero),
-        'auc_mean_mean': np.mean(aucs_mean),
-        'auc_mean_std': np.std(aucs_mean),
-        'num_samples': len(aucs_zero)
-    }
-    
-    import json
+            # Pad if sizes mismatch due to division
+            rem = len(signal[0]) - len(importance_upsampled)
+            if rem > 0: importance_upsampled = np.pad(importance_upsampled, (0, rem))
+            elif rem < 0: importance_upsampled = importance_upsampled[:rem]
+            
+            metrics['qrs_iou'].append(qrs_iou_score(signal[0], importance_upsampled))
+            
+    results = {k: {"mean": float(np.mean(v)), "std": float(np.std(v))} for k, v in metrics.items()}
+    os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, 'faithfulness_metrics.json'), 'w') as f:
         json.dump(results, f, indent=2)
-    
-    print(f"Faithfulness metrics saved to {output_dir}/faithfulness_metrics.json")
-    print(f"AUC Zero: {results['auc_zero_mean']:.3f} ± {results['auc_zero_std']:.3f}")
-    print(f"AUC Mean: {results['auc_mean_mean']:.3f} ± {results['auc_mean_std']:.3f}")
-
-
-def plot_wavelet(ax, wavelet_type, scale, translation, color='blue', label=None):
-    """Plots a single wavelet in the time domain."""
-    t = np.linspace(-2, 2, 400)
-    s = (t - translation) / (scale + 1e-8)
-    
-    if wavelet_type == 'mexican_hat':
-        y = (1 - s**2) * np.exp(-0.5 * s**2)
-    elif wavelet_type == 'morlet':
-        y = np.cos(5 * s) * np.exp(-0.5 * s**2)
-    else:
-        y = np.zeros_like(t)
-        
-    ax.plot(t, y, color=color, alpha=0.6, label=label)
+    print(f"Interpretability metrics saved to {output_dir}")
+    print(json.dumps(results, indent=2))
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    # 1. Load Model
-    model = WavKANClassifier(input_dim=250, num_classes=2, 
-                             hidden_dim=args.hidden_dim, 
-                             wavelet_type=args.wavelet_type, 
-                             depth=args.depth).to(device)
-    
-    if os.path.exists(args.checkpoint):
-        print(f"Loading weights from {args.checkpoint}...")
-        model.load_state_dict(torch.load(args.checkpoint, map_location=device), strict=False)
-    else:
-        print(f"Error: Checkpoint {args.checkpoint} not found.")
-        return
-
-    # 2. Extract Parameters from the first WaveletLinear layer
-    # This layer processes the raw signal (or conv stem features)
-    first_layer = model.layers[0]
-    
-    # scale = a_min + softplus(scale_raw)
-    a_min = 0.001
-    learned_scales = (a_min + F.softplus(first_layer.scale_raw)).detach().cpu().numpy()
-    learned_translations = first_layer.translation.detach().cpu().numpy()
-    
-    print(f"Extracted {learned_scales.shape[0]} base functions from Layer 0.")
-    print(f"Scale range: [{learned_scales.min():.4f}, {learned_scales.max():.4f}]")
-    print(f"Translation range: [{learned_translations.min():.4f}, {learned_translations.max():.4f}]")
-
-    # Generate heatmaps if data file provided
     if args.data_file:
-        generate_heatmaps(args.checkpoint, args.data_file, args.output_dir, args.num_samples)
         generate_faithfulness_report(args.checkpoint, args.data_file, args.output_dir, args.num_samples)
-
-    # 3. Plot a representative sample of wavelets
-    fig, axes = plt.subplots(1, 1, figsize=(10, 6))
-    
-    # Selection: pick wavelets with largest scales (broad features like T-wave) 
-    # and smallest scales (sharp features like QRS)
-    flat_scales = learned_scales.flatten()
-    flat_trans = learned_translations.flatten()
-    
-    indices = np.argsort(flat_scales)
-    smallest_idx = indices[:5]
-    largest_idx = indices[-5:]
-    
-    for idx in smallest_idx:
-        plot_wavelet(axes, args.wavelet_type, flat_scales[idx], flat_trans[idx], color='red')
-    
-    for idx in largest_idx:
-        plot_wavelet(axes, args.wavelet_type, flat_scales[idx], flat_trans[idx], color='green')
-
-    axes.set_title(f"Learned Wavelet Basis Functions ({args.wavelet_type})\nRed: Sharp (high freq), Green: Broad (low freq)")
-    axes.set_xlabel("Normalized Time")
-    axes.set_ylabel("Amplitude")
-    axes.grid(True)
-    
-    save_path = f"paper/plots/wavelet_interpretability_{args.wavelet_type}.png"
-    os.makedirs('paper/plots', exist_ok=True)
-    plt.savefig(save_path)
-    print(f"Saved visualization to {save_path}")
-
-    # 4. Frequency Analysis (Optional but helpful for the paper)
-    # Estimate frequency bands captured
-    # F_center = f_c / scale
-    # Mexico Hat: f_c ~ 0.25 (peak frequency)
-    center_freqs = 0.25 / (learned_scales + 1e-8)
-    plt.figure(figsize=(8, 4))
-    plt.hist(center_freqs.flatten(), bins=50, color='skyblue', edgecolor='black')
-    plt.title(f"Distribution of Learned Center Frequencies ({args.wavelet_type})")
-    plt.xlabel("Frequency (arbitrary units)")
-    plt.ylabel("Count")
-    plt.savefig(f"paper/plots/wavelet_frequencies_{args.wavelet_type}.png")
+        generate_heatmaps(args.checkpoint, args.data_file, args.output_dir, args.num_samples)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -287,8 +238,8 @@ if __name__ == "__main__":
     parser.add_argument('--wavelet_type', type=str, default='mexican_hat')
     parser.add_argument('--hidden_dim', type=int, default=64)
     parser.add_argument('--depth', type=int, default=3)
-    parser.add_argument('--data_file', type=str, help='Path to test data for heatmaps')
-    parser.add_argument('--output_dir', type=str, default='experiments/wavelet_analysis', help='Output directory for heatmaps')
-    parser.add_argument('--num_samples', type=int, default=10, help='Number of samples for heatmap analysis')
+    parser.add_argument('--data_file', type=str, required=True)
+    parser.add_argument('--output_dir', type=str, default='experiments/wavelet_analysis')
+    parser.add_argument('--num_samples', type=int, default=50)
     args = parser.parse_args()
     main(args)

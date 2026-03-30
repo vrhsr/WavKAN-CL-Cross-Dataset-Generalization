@@ -52,17 +52,17 @@ def main(args):
     
     # 1. Initialize and Load Model
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=64).to(device)
+        model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=64).to(device)
     elif args.model == 'resnet':
-        model = ResNet1D(in_channels=1, num_classes=2).to(device)
+        model = ResNet1D(in_channels=12, num_classes=5).to(device)
     elif args.model == 'vit':
-        model = ViT1D(seq_len=250, num_classes=2).to(device)
+        model = ViT1D(seq_len=1000, num_classes=5).to(device)
     elif args.model == 'spline_kan':
-        model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
-    elif args.model == 'mlp':
-        model = SimpleMLP(input_dim=250, num_classes=2).to(device)
+        model = SplineKANClassifier(input_dim=1000, num_classes=5).to(device)
+    elif args.model == 'simple_mlp':
+        model = SimpleMLP(input_dim=1000, num_classes=5).to(device)
     elif args.model == 'dann':
-        model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
+        model = DANN(in_channels=12, num_classes=5, feature_dim=256).to(device)
     else:
         raise ValueError("Unknown model")
         
@@ -104,7 +104,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptb_file', type=str, default='data/ptbxl_processed.csv')
-    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'mlp', 'dann'])
+    parser.add_argument('--model', type=str, required=True, choices=['wavkan', 'resnet', 'vit', 'spline_kan', 'simple_mlp', 'dann'])
     parser.add_argument('--normalize_input', action='store_true')
     parser.add_argument('--pre_filter', action='store_true', help='Apply simple low-pass pre-filter')
     parser.add_argument('--corruptions', type=str, default='awgn,baseline_wander,powerline,muscle,motion,lead_dropout,sampling_jitter,label_flip',

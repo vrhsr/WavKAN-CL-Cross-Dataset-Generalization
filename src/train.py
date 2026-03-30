@@ -117,18 +117,18 @@ def main(args):
     
     # 2. Initialize Model
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2, 
+        model = WavKANClassifier(input_dim=1000, num_classes=5, 
                                hidden_dim=args.hidden_dim, 
                                wavelet_type=args.wavelet_type,
                                depth=args.depth).to(device)
     elif args.model == 'resnet':
-        model = ResNet1D(in_channels=1, num_classes=2).to(device)
+        model = ResNet1D(in_channels=12, num_classes=5).to(device)
     elif args.model == 'vit':
-        model = ViT1D(seq_len=250, num_classes=2).to(device)
+        model = ViT1D(seq_len=1000, num_classes=5).to(device)
     elif args.model == 'mlp':
-        model = SimpleMLP(input_dim=250, num_classes=2).to(device)
+        model = SimpleMLP(input_dim=1000, num_classes=5).to(device)
     elif args.model == 'spline_kan':
-        model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
+        model = SplineKANClassifier(input_dim=1000, num_classes=5).to(device)
     else:
         raise ValueError("Unknown model")
         

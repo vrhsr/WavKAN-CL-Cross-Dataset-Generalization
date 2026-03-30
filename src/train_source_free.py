@@ -133,15 +133,15 @@ def main(args):
 
     # Initialize model (pretrained on source, but we simulate source-free by starting from scratch or loading)
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim, in_channels=args.in_channels).to(device)
+        model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim, in_channels=args.in_channels).to(device)
     elif args.model == 'spline_kan':
-        model = SplineKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim, in_channels=args.in_channels).to(device)
+        model = SplineKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim, in_channels=args.in_channels).to(device)
     elif args.model == 'resnet':
-        model = ResNet1D(in_channels=args.in_channels, num_classes=2).to(device)
+        model = ResNet1D(in_channels=args.in_channels, num_classes=5).to(device)
     elif args.model == 'vit':
-        model = ViT1D(seq_len=250, num_classes=2).to(device)
+        model = ViT1D(seq_len=1000, num_classes=5).to(device)
     elif args.model == 'simple_mlp':
-        model = SimpleMLP(input_dim=250 * args.in_channels, num_classes=2).to(device)
+        model = SimpleMLP(input_dim=1000 * args.in_channels, num_classes=5).to(device)
 
     # Load pretrained model if provided (simulating source training)
     if args.pretrained_path:

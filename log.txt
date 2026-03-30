@@ -1,0 +1,21 @@
+commit 20e1dfdc41494f5a4a94ad5563c218fab5d77dd4
+Author: vrhsr <mvrhsr@gmail.com>
+Date:   Mon Mar 16 19:31:37 2026 +0530
+
+    udpated coral/mmd kan for gpu
+
+ experiments/fewshot_wavkan.csv |   2 +-
+ paper/manuscript.tex           |  61 ++++++++++
+ src/analyze_wavelets.py        | 199 +++++++++++++++++++++++++++++++-
+ src/benchmark_deployment.py    |   1 +
+ src/dataset.py                 |  63 +++++++---
+ src/models/spline_kan.py       |  11 +-
+ src/models/wavkan.py           |  25 +++-
+ src/statistical_tests.py       |  28 +++--
+ src/test_robustness.py         |  16 ++-
+ src/test_tent.py               | 139 ++++++++++++++++++++++
+ src/train_coral.py             | 254 +++++++++++++++++++++++++++++++++++++++++
+ src/train_multiclass.py        | 206 +++++++++++++++++++++++++++++++++
+ src/train_source_free.py       | 218 +++++++++++++++++++++++++++++++++++
+ src/train_ssl.py               |  14 ++-
+ 14 files changed, 1184 insertions(+), 53 deletions(-)

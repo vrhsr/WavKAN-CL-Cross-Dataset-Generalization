@@ -176,15 +176,15 @@ def main(args):
 
     # Initialize model
     if args.model == 'wavkan':
-        base_model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim)
+        base_model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim)
     elif args.model == 'spline_kan':
-        base_model = SplineKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim)
+        base_model = SplineKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim)
     elif args.model == 'resnet':
-        base_model = ResNet1D(in_channels=1, num_classes=2)
+        base_model = ResNet1D(in_channels=12, num_classes=5)
     elif args.model == 'vit':
-        base_model = ViT1D(seq_len=250, num_classes=2)
+        base_model = ViT1D(seq_len=1000, num_classes=5)
     elif args.model == 'simple_mlp':
-        base_model = SimpleMLP(input_dim=250, num_classes=2)
+        base_model = SimpleMLP(input_dim=1000, num_classes=5)
 
     # Wrap in CORAL model
     model = CORALModel(base_model).to(device)

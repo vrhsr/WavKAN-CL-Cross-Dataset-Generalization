@@ -7,6 +7,21 @@ import os
 import glob
 import pandas as pd
 import numpy as np
+import json
+
+def load_results(files, index_col=0):
+    dfs = []
+    for f in files:
+        if f.endswith('.csv'):
+            dfs.append(pd.read_csv(f, index_col=index_col))
+        elif f.endswith('.json'):
+            with open(f, 'r') as fp:
+                data = json.load(fp)
+            if isinstance(data, dict):
+                dfs.append(pd.DataFrame([data]))
+            elif isinstance(data, list):
+                dfs.append(pd.DataFrame(data))
+    return dfs
 
 
 def aggregate_fewshot():
@@ -15,14 +30,16 @@ def aggregate_fewshot():
     summary = {}
     
     for model in models:
-        pattern = f"experiments/fewshot_{model}_seed*.csv"
-        files = sorted(glob.glob(pattern))
+        pattern_csv = f"experiments/fewshot_{model}_seed*.csv"
+        pattern_json = f"experiments/fewshot_{model}_seed*.json"
+        pattern_runs_json = f"experiments/runs/fewshot_{model}_seed*.json"
+        files = sorted(glob.glob(pattern_csv) + glob.glob(pattern_json) + glob.glob(pattern_runs_json))
         
         if not files:
-            print(f"  No seed files found for {model} (pattern: {pattern})")
+            print(f"  No seed files found for {model}")
             continue
             
-        dfs = [pd.read_csv(f, index_col=0) for f in files]
+        dfs = load_results(files, index_col=0)
         combined = pd.concat(dfs)
         
         means = combined.mean()
@@ -50,13 +67,15 @@ def aggregate_robustness():
     summary = {}
     
     for model in models:
-        pattern = f"experiments/robustness_{model}_seed*.csv"
-        files = sorted(glob.glob(pattern))
+        pattern_csv = f"experiments/robustness_{model}_seed*.csv"
+        pattern_json = f"experiments/robustness_{model}_seed*.json"
+        pattern_runs_json = f"experiments/runs/robustness_{model}_seed*.json"
+        files = sorted(glob.glob(pattern_csv) + glob.glob(pattern_json) + glob.glob(pattern_runs_json))
         
         if not files:
             continue
             
-        dfs = [pd.read_csv(f, index_col=0) for f in files]
+        dfs = load_results(files, index_col=0)
         combined = pd.concat(dfs)
         
         means = combined.mean()
@@ -130,20 +149,27 @@ def aggregate_zeroshot():
     summary = {}
     
     for model in models:
-        pattern = f"experiments/zeroshot_{model}_seed*.csv"
-        files = sorted(glob.glob(pattern))
+        pattern_csv = f"experiments/zeroshot_{model}_seed*.csv"
+        pattern_json = f"experiments/zeroshot_{model}_seed*.json"
+        pattern_runs_json = f"experiments/runs/zeroshot_{model}_seed*.json"
+        files = sorted(glob.glob(pattern_csv) + glob.glob(pattern_json) + glob.glob(pattern_runs_json))
         
         if not files:
             print(f"  No zero-shot seed files found for {model}")
             continue
             
-        dfs = [pd.read_csv(f) for f in files]
+        dfs = load_results(files, index_col=None)
         combined = pd.concat(dfs)
         
-        f1_mean = combined['zero_shot_f1'].mean()
-        f1_std = combined['zero_shot_f1'].std()
-        acc_mean = combined['zero_shot_acc'].mean()
-        auc_mean = combined['zero_shot_auc'].mean()
+        f1_col = 'zero_shot_f1' if 'zero_shot_f1' in combined.columns else 'val_f1_macro'
+        f1_mean = combined[f1_col].mean()
+        f1_std = combined[f1_col].std() if len(combined) > 1 else 0.0
+        
+        acc_col = 'zero_shot_acc' if 'zero_shot_acc' in combined.columns else 'val_acc'
+        acc_mean = combined[acc_col].mean() if acc_col in combined.columns else 0.0
+        
+        auc_col = 'zero_shot_auc' if 'zero_shot_auc' in combined.columns else 'val_auroc_macro'
+        auc_mean = combined[auc_col].mean() if auc_col in combined.columns else 0.0
         
         summary[model] = {
             'f1': f"{f1_mean:.3f} ± {f1_std:.3f}",

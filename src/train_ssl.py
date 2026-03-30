@@ -22,9 +22,9 @@ def train_ssl(args):
     # 2. Model
     # Initialize normally. Forward(contrastive=True) returns projection.
     if args.model == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2).to(device)
+        model = WavKANClassifier(input_dim=1000, num_classes=5).to(device)
     elif args.model == 'spline_kan':
-        model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
+        model = SplineKANClassifier(input_dim=1000, num_classes=5).to(device)
     else:
         raise ValueError("Unknown model for SSL")
         

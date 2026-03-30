@@ -186,7 +186,7 @@ def main(args):
     )
     
     # 3. Initialize DANN
-    model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
+    model = DANN(in_channels=12, num_classes=5, feature_dim=256).to(device)
     param_count = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"DANN parameters: {param_count:,}")
     

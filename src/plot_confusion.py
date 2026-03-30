@@ -23,8 +23,8 @@ def plot_confusion_matrices():
     results = {}
     
     models = {
-        'WavKAN': WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=128),
-        'ViT-1D': ViT1D(seq_len=250, num_classes=2)
+        'WavKAN': WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=128),
+        'ViT-1D': ViT1D(seq_len=1000, num_classes=5)
     }
     
     # Load weights

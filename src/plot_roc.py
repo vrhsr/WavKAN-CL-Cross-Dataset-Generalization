@@ -17,17 +17,17 @@ OUTPUT_DIR = 'experiments/plots'
 def load_model(name, device):
     """Re-instantiate and load model weights."""
     if name == 'wavkan':
-        model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=128)
+        model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=128)
     elif name == 'spline_kan':
-        model = SplineKANClassifier(input_dim=250, num_classes=2)
+        model = SplineKANClassifier(input_dim=1000, num_classes=5)
     elif name == 'resnet':
-        model = ResNet1D(in_channels=1, num_classes=2)
+        model = ResNet1D(in_channels=12, num_classes=5)
     elif name == 'vit':
-        model = ViT1D(seq_len=250, num_classes=2)
+        model = ViT1D(seq_len=1000, num_classes=5)
     elif name == 'mlp':
-        model = SimpleMLP(input_dim=250, num_classes=2)
+        model = SimpleMLP(input_dim=1000, num_classes=5)
     elif name == 'dann':
-        model = DANN(in_channels=1, num_classes=2, feature_dim=256)
+        model = DANN(in_channels=12, num_classes=5, feature_dim=256)
     else:
         raise ValueError(f"Unknown model: {name}")
     

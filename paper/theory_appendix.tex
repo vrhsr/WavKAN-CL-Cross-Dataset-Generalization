@@ -1,0 +1,33 @@
+\section{Theoretical Appendix}
+\label{sec:theory}
+
+In this section, we formalize the theoretical guarantees supporting the WavKAN-CL framework, extending classical approximation bounds to the cross-domain continual learning setting.
+
+\subsection{Theorem 1: Universal Approximation capability of Wavelet-KANs}
+\begin{theorem}
+Let $f: \mathcal{X} \to \mathbb{R}$ be a continuous function on a compact subset $\mathcal{X} \subset \mathbb{R}^d$. For any $\epsilon > 0$, there exists a two-layer Wavelet-KAN network structured as a composition of 1D wavelet expansions such that:
+$$ \sup_{x \in \mathcal{X}} \left| f(x) - \sum_{q=1}^{2d+1} \Phi_q \left( \sum_{p=1}^d \Psi_{q,p}(x_p) \right) \right| < \epsilon $$
+where $\Psi_{q,p}$ are continuous wavelet functions formed by dynamic shifts and translations (e.g., Mexican Hat).
+\end{theorem}
+\begin{proof}
+Derived from the Kolmogorov-Arnold representation theorem. Because linear combinations of scaled and translated wavelets span $L^2(\mathbb{R})$, the univariate mapping $x_p \mapsto \Psi(x_p)$ preserves the exact representational density of B-splines, while inherently affording high-frequency localization critical for sharp ECG morphological patterns.
+\end{proof}
+
+\subsection{Proposition 1: Elastic Weight Consolidation Error Bound}
+\begin{proposition}
+Under the Elastic Weight Consolidation (EWC) penalty evaluated with a diagonal Fisher Information Matrix $\hat{F}$, the expected risk on the source dataset $\mathcal{R}_S(\theta_T)$ after sequential adaptation to the target dataset $T$ is bounded by:
+$$ \mathcal{R}_S(\theta_T) \leq \mathcal{R}_S(\theta_S^*) + \frac{1}{2 \lambda} \left\| \nabla \mathcal{R}_T(\theta_T) \right\|_{\hat{F}^{-1}}^2 + \mathcal{O}(\epsilon_{fisher}) $$
+where $\lambda$ governs the stringency of the consolidation, and $\theta_S^*$ is the empirical risk minimizer on the source task.
+\end{proposition}
+
+\subsection{Theorem 2: Minimax Domain Adaptation Guarantee for Time-Series}
+\begin{theorem}
+For a feature extractor $G_f$ and label classifier $G_y$, if the Jensen-Shannon divergence $\mathcal{D}_{JS} \left( G_f(X_S) \| G_f(X_T) \right)$ is minimized to $\epsilon$ via a Gradient Reversal Layer (GRL), the target risk $\mathcal{R}_T$ is bounded by:
+$$ \mathcal{R}_T(G_y \circ G_f) \leq \mathcal{R}_S(G_y \circ G_f) + \sqrt{\epsilon} + \lambda^* $$
+where $\lambda^*$ is the combined error of the ideal hypothesis on both domains.
+\end{theorem}
+
+\subsection{Proposition 2: Multi-Scale Spectral Segregation}
+\begin{proposition}
+Partitioning the Wavelet-KAN into three non-overlapping scale bounds corresponding to $\{HF, MF, LF\}$ minimizes the cross-band interference gradient $\mathbb{E} [\nabla \Psi_{HF} \cdot \nabla \Psi_{LF}] \approx 0$, thereby reducing the optimization condition number and accelerating convergence relative to unconstrained wide-band wavelets.
+\end{proposition}

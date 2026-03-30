@@ -2,26 +2,27 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import random
+
+class ECGTrainTransform:
+    def __call__(self, x):
+        # x shape: (channels, seq_len)
+        if random.random() < 0.5:
+            x = x + torch.randn_like(x) * 0.05  # Gaussian noise
+        if random.random() < 0.3:
+            scale = 0.8 + random.random() * 0.4  # [0.8, 1.2]
+            x = x * scale                        # Amplitude scaling
+        if random.random() < 0.2:
+            lead_idx = random.randint(0, x.shape[0] - 1)
+            x[lead_idx] = 0                      # Lead dropout
+        return x
 
 class HarmonizedDataset(Dataset):
-    def __init__(self, csv_file, noise_snr_db=None, corruption_type='awgn', corruption_kwargs=None, multi_lead=False, leads=['II'], multi_class=False, class_mapping=None):
+    def __init__(self, data_path, label_path=None, noise_snr_db=None, corruption_type='awgn', corruption_kwargs=None, multi_lead=False, leads=['II'], multi_class=False, class_mapping=None, transform=None):
         """
-        Loads the harmonized ECG data from CSV.
-        Expected format: 250 signal columns (0..249), 'label', 'patient_id'
-        For multi-lead: assumes columns named like 'I_0', 'I_1', ..., 'II_0', etc.
-        For multi-class: applies class_mapping to convert labels.
-        
-        Args:
-            csv_file (str): Path to processed CSV
-            noise_snr_db (float, optional): If set, adds additive noise with this SNR to signals.
-            corruption_type (str): Corruption mode used for robustness testing.
-            corruption_kwargs (dict, optional): Optional parameters for corruption behavior.
-            multi_lead (bool): If True, load multiple leads.
-            leads (list): List of lead names to load (e.g., ['I', 'II', 'III']).
-            multi_class (bool): If True, apply multi-class mapping.
-            class_mapping (dict): Mapping from original labels to multi-class labels.
+        Loads the harmonized ECG data from CSV or NPY.
         """
-        print(f"Loading dataset from {csv_file}...")
+        print(f"Loading dataset from {data_path}...")
         self.noise_snr_db = noise_snr_db
         self.corruption_type = corruption_type
         self.corruption_kwargs = corruption_kwargs or {}
@@ -29,31 +30,34 @@ class HarmonizedDataset(Dataset):
         self.leads = leads
         self.multi_class = multi_class
         self.class_mapping = class_mapping or {}
+        self.transform = transform
         
-        df = pd.read_csv(csv_file)
-        
-        if multi_lead:
-            # Assume columns like 'I_0' to 'I_249', 'II_0' to 'II_249', etc.
-            self.X = []
-            for lead in leads:
-                lead_cols = [f"{lead}_{i}" for i in range(250)]
-                if not all(col in df.columns for col in lead_cols):
-                    raise ValueError(f"Lead {lead} columns not found in CSV")
-                lead_data = df[lead_cols].values
-                self.X.append(lead_data)
-            self.X = np.stack(self.X, axis=1)  # Shape: (n_samples, n_leads, 250)
+        if data_path.endswith('.npy'):
+            self.X = np.load(data_path)
+            self.y = np.load(label_path) if label_path else np.zeros(len(self.X))
+            self.multi_lead = self.X.ndim == 3 # (N, leads, len)
+        elif data_path.endswith('.csv'):
+            df = pd.read_csv(data_path)
+            if multi_lead:
+                self.X = []
+                for lead in leads:
+                    lead_cols = [f"{lead}_{i}" for i in range(250)]
+                    if not all(col in df.columns for col in lead_cols):
+                        raise ValueError(f"Lead {lead} columns not found in CSV")
+                    lead_data = df[lead_cols].values
+                    self.X.append(lead_data)
+                self.X = np.stack(self.X, axis=1)
+            else:
+                self.signal_cols = [c for c in df.columns if str(c).isdigit()]
+                self.X = df[self.signal_cols].values
+            self.y = df['label'].values
+            
+            if multi_class and class_mapping:
+                self.y = np.array([class_mapping.get(label, label) for label in self.y])
         else:
-            # Single lead
-            self.signal_cols = [c for c in df.columns if str(c).isdigit()]
-            self.X = df[self.signal_cols].values  # Shape: (n_samples, 250)
-        
-        self.y = df['label'].values
-        
-        if multi_class and class_mapping:
-            self.y = np.array([class_mapping.get(label, label) for label in self.y])
-            print(f"Applied multi-class mapping. Unique classes: {np.unique(self.y)}")
-        
-        print(f"Loaded {len(df)} samples. Shape: {self.X.shape}")
+            raise ValueError(f"Unsupported format: {data_path}")
+            
+        print(f"Loaded {len(self.X)} samples. Shape: {self.X.shape}")
         if self.noise_snr_db is not None:
             print(f"Configured for Noise Injection: SNR={self.noise_snr_db}dB")
 
@@ -150,72 +154,90 @@ class HarmonizedDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, idx):
-        # Return (signal, label)
         signal_raw = self.X[idx]
         
-        # Add noise if configured
         if self.noise_snr_db is not None:
-            if self.multi_lead:
-                # Apply corruption to each lead
-                corrupted = []
-                for lead_idx in range(signal_raw.shape[0]):
-                    corrupted.append(self.apply_corruption(signal_raw[lead_idx]))
+            if signal_raw.ndim == 2:
+                corrupted = [self.apply_corruption(signal_raw[i]) for i in range(signal_raw.shape[0])]
                 signal_raw = np.stack(corrupted, axis=0)
             else:
                 signal_raw = self.apply_corruption(signal_raw)
-            # Re-float32 cast in case noise made it float64
             signal_raw = signal_raw.astype(np.float32)
         
-        if self.multi_lead:
-            signal = torch.tensor(signal_raw)  # Shape: (n_leads, 250)
+        if signal_raw.ndim == 2:
+            signal = torch.tensor(signal_raw, dtype=torch.float32)
         else:
-            signal = torch.tensor(signal_raw).unsqueeze(0)  # (1, 250)
+            signal = torch.tensor(signal_raw, dtype=torch.float32).unsqueeze(0)
+            
+        # 1. Per-sample, per-lead normalization
+        signal = (signal - signal.mean(dim=-1, keepdim=True)) / (signal.std(dim=-1, keepdim=True) + 1e-8)
         
-        label_value = int(self.y[idx])
-        if self.noise_snr_db is not None and self.corruption_type == 'label_flip':
-            flip_prob = float(self.corruption_kwargs.get('flip_prob', 0.1))
-            if np.random.rand() < flip_prob:
-                label_value = 1 - label_value
-        label = torch.tensor(label_value)
-        
+        # 2. Supervised transforms
+        if self.transform is not None:
+            signal = self.transform(signal)
+            
+        if isinstance(self.y[idx], np.ndarray):
+            label = torch.tensor(self.y[idx], dtype=torch.float32)
+        else:
+            label_value = int(self.y[idx])
+            if self.noise_snr_db is not None and self.corruption_type == 'label_flip':
+                flip_prob = float(self.corruption_kwargs.get('flip_prob', 0.1))
+                if np.random.rand() < flip_prob:
+                    label_value = 1 - label_value
+            label = torch.tensor(label_value, dtype=torch.long)
+            
         return signal, label
 
 class SSLAugmentedDataset(Dataset):
-    def __init__(self, csv_file):
+    def __init__(self, data_file):
         """
         Dataset for Self-Supervised Learning (SimCLR).
-        Returns two augmented views of the same signal.
+        Returns two augmented views of the same 12-lead signal.
         """
-        df = pd.read_csv(csv_file)
-        self.signal_cols = [c for c in df.columns if str(c).isdigit()]
-        self.X = df[self.signal_cols].values.astype(np.float32)
+        if data_file.endswith('.npy'):
+            self.X = np.load(data_file).astype(np.float32)
+        else:
+            df = pd.read_csv(data_file)
+            signal_cols = [c for c in df.columns if str(c).isdigit()]
+            self.X = df[signal_cols].values.astype(np.float32)
+            if self.X.ndim == 2:
+                self.X = np.expand_dims(self.X, axis=1)
         print(f"SSL Dataset Loaded: {len(self.X)} samples.")
+
+    def temporal_crop(self, x, crop_ratio=0.8):
+        T = x.shape[1]
+        crop_len = int(T * crop_ratio)
+        start = np.random.randint(0, max(1, T - crop_len))
+        cropped = x[:, start:start + crop_len]
+        padded = np.pad(cropped, ((0, 0), (0, T - crop_len)), mode='constant')
+        return padded
 
     def augment(self, signal):
         """
-        Apply random augmentations:
-        1. Gaussian Noise
-        2. Amplitude Scaling
-        3. Random Masking
+        Apply 12-lead aware random augmentations.
+        Input shape: (C, L)
         """
         sig = signal.copy()
         
         # 1. Amplitude Scale (0.5 to 1.5)
         if np.random.rand() > 0.5:
-            scale = np.random.uniform(0.5, 1.5)
+            scale = np.random.uniform(0.5, 1.5, size=(sig.shape[0], 1))
             sig = sig * scale
             
         # 2. Add Noise (SNR ~ 10-20dB)
         if np.random.rand() > 0.5:
             noise_amp = np.random.uniform(0.01, 0.05) * np.max(np.abs(sig))
-            noise = np.random.normal(0, noise_amp, sig.shape)
-            sig = sig + noise
+            sig = sig + np.random.normal(0, noise_amp, sig.shape)
             
-        # 3. Random Masking (Zero out 10% of signal)
+        # 3. Lead Dropout (zero out random leads, p=0.15)
         if np.random.rand() > 0.5:
-            mask_len = int(len(sig) * 0.1)
-            start = np.random.randint(0, len(sig) - mask_len)
-            sig[start:start+mask_len] = 0.0
+            p = 0.15
+            mask = np.random.rand(sig.shape[0]) > p
+            sig = sig * mask[:, np.newaxis]
+            
+        # 4. Temporal Crop (80% crop + pad)
+        if np.random.rand() > 0.5:
+            sig = self.temporal_crop(sig, crop_ratio=0.8)
             
         return torch.tensor(sig).float()
 
@@ -224,9 +246,10 @@ class SSLAugmentedDataset(Dataset):
 
     def __getitem__(self, idx):
         signal_raw = self.X[idx]
-        
-        # Generate two views
-        view1 = self.augment(signal_raw).unsqueeze(0)
-        view2 = self.augment(signal_raw).unsqueeze(0)
+        if signal_raw.ndim == 1:
+            signal_raw = signal_raw[np.newaxis, :]
+            
+        view1 = self.augment(signal_raw)
+        view2 = self.augment(signal_raw)
         
         return view1, view2

@@ -33,3 +33,18 @@ class NTXentLoss(nn.Module):
         
         loss = F.cross_entropy(sim_matrix, target)
         return loss
+
+class MultilabelFocalLoss(nn.Module):
+    """Multi-label focal loss for BCEWithLogits."""
+    def __init__(self, gamma=2.0, pos_weight=None):
+        super(MultilabelFocalLoss, self).__init__()
+        self.gamma = gamma
+        self.pos_weight = pos_weight
+
+    def forward(self, inputs, targets):  # multi-hot targets
+        bce = F.binary_cross_entropy_with_logits(
+            inputs, targets, pos_weight=self.pos_weight, reduction='none'
+        )
+        pt = torch.exp(-bce)
+        focal = ((1 - pt) ** self.gamma * bce)
+        return focal.mean()

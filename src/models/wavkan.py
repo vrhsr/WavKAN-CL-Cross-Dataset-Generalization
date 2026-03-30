@@ -4,19 +4,18 @@ import torch.nn.functional as F
 import math
 
 class WaveletLinear(nn.Module):
-    def __init__(self, in_features, out_features, wavelet_type='mexican_hat', init_mode='random'):
+    def __init__(self, in_features, out_features, wavelet_type='mexican_hat', init_mode='random', learnable=True, scale_min=0.01, scale_max=10.0):
         super(WaveletLinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.wavelet_type = wavelet_type
         self.init_mode = init_mode
-        self.a_min = 0.001  # Minimum scale floor to prevent collapse
+        self.scale_min = scale_min
+        self.scale_max = scale_max
+        self.a_min = 0.001 
         
-        # Learnable parameters for scaling and translation of wavelets
-        # Shape: (out_features, in_features)
-        self.translation = nn.Parameter(torch.zeros(out_features, in_features))
-        # Use scale_raw to enforce positivity/stability via softplus in forward
-        self.scale_raw = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.translation = nn.Parameter(torch.zeros(out_features, in_features), requires_grad=learnable)
+        self.scale_raw = nn.Parameter(torch.Tensor(out_features, in_features), requires_grad=learnable)
         self.weights = nn.Parameter(torch.Tensor(out_features, in_features))
 
         self.reset_parameters()
@@ -51,25 +50,23 @@ class WaveletLinear(nn.Module):
             # Starting scales between 0.1 and 1.0
             nn.init.uniform_(self.scale_raw, -2.0, 0.0)
 
-    def forward(self, x):
-        # x shape: (batch_size, in_features)
-        # Expand x to match output dimensions: (batch, out, in)
-        x_expanded = x.unsqueeze(1).expand(-1, self.out_features, -1)
-        
-        # Apply softplus to ensure scale > a_min
-        scale = self.a_min + F.softplus(self.scale_raw)
-        
-        # Apply wavelet transform: psi((x - b) / a)
-        s = (x_expanded - self.translation) / (scale + 1e-8)
-        
+    def _compute_wavelet(self, s):
+        """Helper to compute wavelet response for a given normalized input s."""
         if self.wavelet_type == 'mexican_hat':
             # Mexican Hat: (1 - t^2) * exp(-t^2 / 2)
-            wavelet = (1 - s**2) * torch.exp(-0.5 * s**2)
+            return (1 - s**2) * torch.exp(-0.5 * s**2)
         elif self.wavelet_type == 'morlet':
             # Morlet real part: cos(5*t) * exp(-t^2 / 2)
-            wavelet = torch.cos(5 * s) * torch.exp(-0.5 * s**2)
+            return torch.cos(5 * s) * torch.exp(-0.5 * s**2)
         else:
-            raise ValueError("Unknown wavelet type")
+            raise ValueError(f"Unknown wavelet type: {self.wavelet_type}")
+
+    def forward(self, x):
+        x_expanded = x.unsqueeze(1).expand(-1, self.out_features, -1)
+        scale = self.scale_min + (self.scale_max - self.scale_min) * torch.sigmoid(self.scale_raw)
+        s = (x_expanded - self.translation) / (scale + 1e-8)
+        
+        wavelet = self._compute_wavelet(s)
             
         # Weighted sum of wavelet responses
         y = (self.weights * wavelet).sum(dim=2)
@@ -91,7 +88,7 @@ class WaveletLinear(nn.Module):
 
 class Conv1DStem(nn.Module):
     """Lightweight 1D convolutional feature extractor that preserves temporal structure."""
-    def __init__(self, out_dim=64, in_channels=1):
+    def __init__(self, out_dim=64, in_channels=12):
         super(Conv1DStem, self).__init__()
         self.stem = nn.Sequential(
             # Block 1: capture local morphology (QRS ~8-12 samples at 100Hz)
@@ -123,34 +120,43 @@ class Conv1DStem(nn.Module):
 
 
 class WavKANClassifier(nn.Module):
-    def __init__(self, input_dim=250, num_classes=2, hidden_dim=64, 
-                 wavelet_type='mexican_hat', depth=3, use_conv_stem=True, in_channels=1):
+    def __init__(self, input_dim=1000, num_classes=5, hidden_dim=64, 
+                 wavelet_type='mexican_hat', depth=3, use_conv_stem=True, 
+                 in_channels=12, learnable=True, scale_min=0.01, scale_max=10.0):
         super(WavKANClassifier, self).__init__()
         
         self.in_channels = in_channels
         self.use_conv_stem = use_conv_stem
+        self.learnable = learnable
+        self.scale_min = scale_min
+        self.scale_max = scale_max
         
         if use_conv_stem:
             self.conv_stem = Conv1DStem(out_dim=hidden_dim, in_channels=in_channels)
-            kan_input_dim = self.conv_stem.out_features
+            with torch.no_grad():
+                dummy = torch.zeros(1, in_channels, input_dim)
+                kan_input_dim = self.conv_stem(dummy).shape[1]
         else:
             self.conv_stem = None
-            kan_input_dim = input_dim * in_channels  # Flatten if no stem
+            kan_input_dim = input_dim * in_channels
         
         self.layers = nn.ModuleList()
         self.norms = nn.ModuleList()
         
         # Input Layer
-        self.layers.append(WaveletLinear(kan_input_dim, hidden_dim, wavelet_type=wavelet_type))
+        self.layers.append(WaveletLinear(kan_input_dim, hidden_dim, wavelet_type=wavelet_type, 
+                                         learnable=self.learnable, scale_min=self.scale_min, scale_max=self.scale_max))
         self.norms.append(nn.LayerNorm(hidden_dim))
         
         # Hidden Layers
         for _ in range(depth - 2):
-            self.layers.append(WaveletLinear(hidden_dim, hidden_dim, wavelet_type=wavelet_type))
+            self.layers.append(WaveletLinear(hidden_dim, hidden_dim, wavelet_type=wavelet_type, 
+                                             learnable=self.learnable, scale_min=self.scale_min, scale_max=self.scale_max))
             self.norms.append(nn.LayerNorm(hidden_dim))
             
         # Output/Bottleneck Layer
-        self.layers.append(WaveletLinear(hidden_dim, hidden_dim, wavelet_type=wavelet_type))
+        self.layers.append(WaveletLinear(hidden_dim, hidden_dim, wavelet_type=wavelet_type, 
+                                         learnable=self.learnable, scale_min=self.scale_min, scale_max=self.scale_max))
         self.norms.append(nn.LayerNorm(hidden_dim))
         
         # Contrastive Head (Projection)
@@ -163,16 +169,19 @@ class WavKANClassifier(nn.Module):
         # Classification Head (Binary)
         self.classifier = nn.Linear(hidden_dim, num_classes)
 
-    def forward(self, x, contrastive=False):
+    def extract_features(self, x):
+        """Extract features before the final classification head."""
         if self.use_conv_stem and self.conv_stem is not None:
-            # x: (batch, in_channels, seq_len)
             features = self.conv_stem(x)
         else:
-            # Legacy: flatten directly
             features = x.view(x.size(0), -1)
         
         for layer, norm in zip(self.layers, self.norms):
             features = norm(F.silu(layer(features)))
+        return features
+
+    def forward(self, x, contrastive=False):
+        features = self.extract_features(x)
         
         if contrastive:
             return self.projection_head(features)

@@ -46,18 +46,19 @@ def evaluate(model, loader, device):
                 outputs = model.predict(inputs)
             else:
                 outputs = model(inputs)
-            preds = torch.argmax(outputs, dim=1).cpu().numpy()
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).int().cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(labels.numpy())
-    return f1_score(all_labels, all_preds)
+    return f1_score(all_labels, all_preds, average='macro', zero_division=0)
 
 def fine_tune(model, train_loader, epochs=10, lr=1e-4, device='cpu'):
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.train()
     for _ in range(epochs):
         for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device).float(), labels.to(device).long()
+            inputs, labels = inputs.to(device).float(), labels.to(device).float()
             optimizer.zero_grad()
             if isinstance(model, DANN):
                 outputs = model.predict(inputs)
@@ -86,17 +87,17 @@ def main(args):
         
         # 2. Initialize Model
         if args.model == 'wavkan':
-            model = WavKANClassifier(input_dim=250, num_classes=2, hidden_dim=args.hidden_dim, depth=args.depth).to(device)
+            model = WavKANClassifier(input_dim=1000, num_classes=5, hidden_dim=args.hidden_dim, depth=args.depth).to(device)
         elif args.model == 'resnet':
-            model = ResNet1D(in_channels=1, num_classes=2).to(device)
+            model = ResNet1D(in_channels=12, num_classes=5).to(device)
         elif args.model == 'vit':
-            model = ViT1D(seq_len=250, num_classes=2).to(device)
+            model = ViT1D(seq_len=1000, num_classes=5).to(device)
         elif args.model == 'mlp':
-            model = SimpleMLP(input_dim=250, num_classes=2).to(device)
+            model = SimpleMLP(input_dim=1000, num_classes=5).to(device)
         elif args.model == 'spline_kan':
-            model = SplineKANClassifier(input_dim=250, num_classes=2).to(device)
+            model = SplineKANClassifier(input_dim=1000, num_classes=5).to(device)
         elif args.model == 'dann':
-            model = DANN(in_channels=1, num_classes=2, feature_dim=256).to(device)
+            model = DANN(in_channels=12, num_classes=5, feature_dim=256).to(device)
         else:
             raise ValueError("Unknown model")
             
