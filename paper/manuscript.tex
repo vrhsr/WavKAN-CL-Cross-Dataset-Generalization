@@ -108,20 +108,26 @@ We evaluate two wavelet functions:
 The Mexican Hat wavelet provides optimal time localization with compact support, while the Morlet wavelet offers superior frequency resolution through its oscillatory structure. Both are well-suited for detecting transient morphological features in ECG signals such as QRS complexes ($\sim$80--120\,ms duration) and T-waves ($\sim$160--200\,ms duration).
 
 \subsubsection{Network Architecture}
-The WavKAN classifier consists of $L$ stacked Wavelet Linear layers with LayerNorm and SiLU activations:
+The WavKAN classifier consists of a Conv1D stem followed by $L$ stacked Wavelet Linear layers with LayerNorm and SiLU activations:
 \begin{equation}
     \mathbf{h}^{(l)} = \text{LayerNorm}\left(\text{SiLU}\left(\text{WavLinear}^{(l)}(\mathbf{h}^{(l-1)})\right)\right)
 \end{equation}
-where $\mathbf{h}^{(0)} = \mathbf{x} \in \mathbb{R}^{250}$ (the flattened ECG input). The final hidden representation $\mathbf{h}^{(L)}$ feeds into either a classification head $\mathbf{W}_c \mathbf{h}^{(L)}$ or a projection head for contrastive learning.
+where $\mathbf{h}^{(0)} = \text{ConvStem}(\mathbf{x}) \in \mathbb{R}^{12 \times 1000}$ (12-lead ECG input).
+
+\subsubsection{Multi-Scale WavKAN}
+To explicitly capture morphological hierarchies, we deploy a three-branch architecture dividing raw input into discrete non-overlapping resolution domains: High Frequency (HF) for sharp artifacts like QRS complexes, Mid Frequency (MF) for broader repolarizations like T-waves, and Low Frequency (LF) focusing on wandering baselines. Features are fused via learned scale-attention: $\text{Linear}(3h, 3) \to \text{Softmax}$, mapping branch importance scalar weights conditionally per sample.
+
+\subsection{Domain Adaptation}
+
+\subsubsection{WavKAN-DANN}
+To overcome massive distribution shift, we wrap our multi-scale WavKAN backbone around a Gradient Reversal Layer (GRL). A parallel domain discriminator aligns feature manifolds interactively while the primary classification head strictly learns source-driven physiological decision boundaries using standard Binary Cross-Entropy (BCEWithLogitsLoss).
 
 \subsection{Self-Supervised Pre-training}
-We employ the SimCLR framework \cite{chen2020simple} for unsupervised pre-training on the target domain. Given an unlabeled ECG signal $\mathbf{x}$, we generate two augmented views $\tilde{\mathbf{x}}_i$ and $\tilde{\mathbf{x}}_j$ via stochastic augmentation (Gaussian noise injection and amplitude scaling). Both views are passed through the WavKAN encoder $f_\theta$ and a projection head $g_\phi$ to obtain embeddings $\mathbf{z}_i$ and $\mathbf{z}_j$. The NT-Xent loss maximizes agreement between positive pairs:
+We employ the SimCLR framework \cite{chen2020simple} for unsupervised pre-training on the target domain. Given an unlabeled 12-lead ECG signal $\mathbf{x}$, we generate two augmented views $\tilde{\mathbf{x}}_i$ and $\tilde{\mathbf{x}}_j$ via stochastic temporal cropping and 12-channel dropout architectures. Both views are passed through the WavKAN encoder $f_\theta$ and a projection head $g_\phi$ to obtain embeddings. The NT-Xent loss maximizes agreement between positive pairs:
 \begin{equation}
     \mathcal{L}_{i,j} = -\log \frac{\exp(\text{sim}(\mathbf{z}_i, \mathbf{z}_j) / \tau)}{\sum_{k=1}^{2N} \mathbb{1}_{[k \neq i]} \exp(\text{sim}(\mathbf{z}_i, \mathbf{z}_k) / \tau)}
 \end{equation}
-where $\text{sim}(\cdot, \cdot)$ denotes cosine similarity and $\tau$ is a temperature hyperparameter.
-
-For downstream evaluation, the projection head is discarded, a classification head is attached, and the model is fine-tuned on the labeled few-shot target support set.
+where $\text{sim}(\cdot, \cdot)$ denotes cosine similarity and $\tau$ is a temperature hyperparameter. Downstream evaluations linearly bypass the projection head.
 
 % ============ 4. EXPERIMENTAL PROTOCOL ============
 \section{Experimental Setup}
